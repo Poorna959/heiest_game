@@ -9,6 +9,14 @@ import {
   stepSimulation,
   triggerManualRewind,
 } from './engine';
+import {
+  SPEAKER_PROFILES,
+  createTransmission,
+  getStoryEndingEditorial,
+  resolveRivalBanter,
+  resolveStoryRadioTransmission,
+} from './scriptEngine';
+import { createInitialRivalState } from './rivalEngine';
 import { LEVELS } from './levels';
 import {
   GameState,
@@ -274,4 +282,122 @@ test('Echo FIFO cap at 5, early rewind anchoring, and rank thresholds', () => {
   assert.equal(computeHeistRank(11), 'A');
   assert.equal(computeHeistRank(15), 'A');
   assert.equal(computeHeistRank(16), 'B');
+});
+
+test('Task 1: Speaker profiles and event-driven Story Radio transmissions resolve by priority', () => {
+  assert.equal(SPEAKER_PROFILES.ARCHITECT.tag, '[THE ARCHITECT]');
+  assert.equal(SPEAKER_PROFILES.VEGA.tag, '[SWAT // VEGA]');
+  assert.equal(SPEAKER_PROFILES.OSLO.tag, '[OSLO // RIVAL]');
+  assert.equal(SPEAKER_PROFILES.CHRONO_OS.tag, '[CHRONO-OS]');
+
+  const state = createInitialGameState(3); // Chapter 4 (has gold case & plates)
+  state.level = {
+    ...state.level,
+    script: {
+      intro: createTransmission('ARCHITECT', 'Intro briefing line.'),
+      firstEcho: createTransmission('ARCHITECT', 'First echo deployed line.'),
+      plateActive: createTransmission('VEGA', 'SWAT sees gate power routing.'),
+      goldPickup: createTransmission('VEGA', 'Seismic alarm on bullion case!'),
+      laserHitPool: [
+        createTransmission('ARCHITECT', 'Watch the beam, Kyoto.'),
+        createTransmission('OSLO', 'Sloppy footwork, old friend.'),
+      ],
+      overPar: createTransmission('CHRONO_OS', 'Par threshold exceeded.'),
+      urgent: createTransmission('CHRONO_OS', 'Chronometer critical: 2.5s.'),
+    },
+  };
+
+  // 1. Default intro on Loop 1
+  const introTx = resolveStoryRadioTransmission(state, null);
+  assert.equal(introTx.speaker, 'ARCHITECT');
+  assert.equal(introTx.text, 'Intro briefing line.');
+
+  // 2. First echo deployed on Loop 2
+  waitTicks(state, 20);
+  triggerManualRewind(state);
+  const echoTx = resolveStoryRadioTransmission(state, 'REWIND');
+  assert.equal(echoTx.text, 'First echo deployed line.');
+
+  // 3. Plate activation priority
+  state.activePlateIds.add('plate-a');
+  const plateTx = resolveStoryRadioTransmission(state, 'PLATE_ON');
+  assert.equal(plateTx.speaker, 'VEGA');
+  assert.equal(plateTx.text, 'SWAT sees gate power routing.');
+
+  // 4. Gold pickup outranks plate active
+  state.goldCollected = true;
+  const goldTx = resolveStoryRadioTransmission(state, 'GOLD_PICKUP');
+  assert.equal(goldTx.speaker, 'VEGA');
+  assert.equal(goldTx.text, 'Seismic alarm on bullion case!');
+
+  // 5. Laser hit rotates deterministically through laserHitPool
+  const hitTx1 = resolveStoryRadioTransmission(state, 'LASER_HIT');
+  assert.ok(
+    hitTx1.text === 'Watch the beam, Kyoto.' ||
+      hitTx1.text === 'Sloppy footwork, old friend.'
+  );
+  state.totalLoopsUsed += 1;
+  const hitTx2 = resolveStoryRadioTransmission(state, 'LASER_HIT');
+  assert.notEqual(hitTx1.text, hitTx2.text);
+
+  // 6. Over-par fallback when no higher-priority state is active
+  state.goldCollected = false;
+  state.activePlateIds.clear();
+  state.loopNumber = state.level.parLoops + 2;
+  const overParTx = resolveStoryRadioTransmission(state, null);
+  assert.equal(overParTx.speaker, 'CHRONO_OS');
+  assert.equal(overParTx.text, 'Par threshold exceeded.');
+
+  // 7. Urgent timer (< 2.5s remaining -> tick >= 455)
+  state.tick = 480;
+  const urgentTx = resolveStoryRadioTransmission(state, 'TICK_URGENT');
+  assert.equal(urgentTx.speaker, 'CHRONO_OS');
+  assert.equal(urgentTx.text, 'Chronometer critical: 2.5s.');
+});
+
+test('Task 1: Rival PvP banter and Rank S/A/B newspaper editorials resolve distinctly', () => {
+  const rivalState = createInitialRivalState(true);
+
+  const stealBanter = resolveRivalBanter(rivalState, {
+    type: 'GOLD_STEAL',
+    team: 'P1',
+  });
+  assert.ok(stealBanter !== null);
+  assert.ok(stealBanter.text.length > 10);
+
+  const tackleBanter = resolveRivalBanter(rivalState, {
+    type: 'DASH_TACKLE',
+    team: 'P2',
+  });
+  assert.ok(tackleBanter !== null);
+  assert.equal(tackleBanter.speaker, 'OSLO');
+
+  const crownBanter = resolveRivalBanter(rivalState, {
+    type: 'CROWN_SPAWN',
+  });
+  assert.ok(crownBanter !== null);
+  assert.equal(crownBanter.speaker, 'ARCHITECT');
+
+  const editS = getStoryEndingEditorial({
+    totalLoopsUsed: 10,
+    echoesLeftBehind: 6,
+    totalHeistSeconds: 65,
+    rank: 'S',
+  });
+  const editA = getStoryEndingEditorial({
+    totalLoopsUsed: 14,
+    echoesLeftBehind: 9,
+    totalHeistSeconds: 95,
+    rank: 'A',
+  });
+  const editB = getStoryEndingEditorial({
+    totalLoopsUsed: 22,
+    echoesLeftBehind: 17,
+    totalHeistSeconds: 140,
+    rank: 'B',
+  });
+
+  assert.notEqual(editS.headline, editA.headline);
+  assert.notEqual(editA.headline, editB.headline);
+  assert.notEqual(editS.stamp, editB.stamp);
 });

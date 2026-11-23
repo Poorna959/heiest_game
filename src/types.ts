@@ -9,7 +9,7 @@ export const PLAYER_SPEED = 220; // px/s
 export const PLAYER_RADIUS = 15;
 export const MAX_ECHOES = 5;
 export const MIN_MANUAL_REWIND_TICKS = 15;
-export const FREEZE_FRAME_DURATION = 2.0; // seconds for Chapter 5 climax
+export const FREEZE_FRAME_DURATION = 2.0; // seconds for final chapter climax
 
 export type ScreenPhase =
   | 'TITLE'
@@ -71,6 +71,7 @@ export interface GoldCaseDef {
   x: number;
   y: number;
   radius: number;
+  label?: string;
 }
 
 export interface ExitDef {
@@ -81,6 +82,44 @@ export interface ExitDef {
   label?: string;
 }
 
+// ============================================================================
+// MULTI-SPEAKER RADIO SCRIPT & NARRATIVE TYPES
+// ============================================================================
+
+export type RadioSpeaker = 'ARCHITECT' | 'VEGA' | 'OSLO' | 'CHRONO_OS';
+
+export interface RadioSpeakerProfile {
+  speaker: RadioSpeaker;
+  tag: string;
+  color: string;
+  blipFreq: number;
+}
+
+export interface RadioTransmission {
+  speaker: RadioSpeaker;
+  tag: string;
+  color: string;
+  text: string;
+}
+
+export interface LevelScriptDef {
+  intro: RadioTransmission;
+  firstEcho?: RadioTransmission;
+  plateActive?: RadioTransmission;
+  goldPickup?: RadioTransmission;
+  laserHitPool: RadioTransmission[];
+  overPar?: RadioTransmission;
+  urgent?: RadioTransmission;
+}
+
+export interface StoryEndingEditorial {
+  stamp: string;
+  headline: string;
+  subhead: string;
+  leadParagraph: string;
+  architectQuote: string;
+}
+
 export interface LevelDef {
   chapter: number;
   title: string;
@@ -88,10 +127,12 @@ export interface LevelDef {
   parLoops: number;
   radioLine: string;
   secondaryRadioLine?: string;
+  script?: LevelScriptDef;
   spawn: Vec2;
   exit: ExitDef;
   requiresGold?: boolean;
   goldCase?: GoldCaseDef;
+  goldCases?: GoldCaseDef[];
   isFinalDecoyChapter?: boolean;
   walls: Wall[];
   plates: Plate[];
@@ -178,6 +219,8 @@ export interface GameState {
   activePlateIds: Set<string>;
   gateOpenProgress: Record<string, number>; // 0 (closed) to 1 (open)
   goldCollected: boolean;
+  collectedGoldIds?: Set<number>;
+  lastRadioEvent?: SimEventType | null;
   /** Visual feedback timers in seconds */
   shakeTimer: number;
   shakeIntensity: number;
@@ -185,7 +228,7 @@ export interface GameState {
   hitstopTimer: number;
   rewindFlashTimer: number;
   lastLaserHitPos: Vec2 | null;
-  /** Freeze frame state for Chapter 5 climax */
+  /** Freeze frame state for final decoy climax */
   freezeFrameActive: boolean;
   freezeFrameTimer: number;
   /** Cumulative run stats across all chapters */
@@ -214,13 +257,27 @@ export type GameMode = 'STORY' | 'RIVAL';
 export type RivalTeam = 'P1' | 'P2';
 export type RivalRole = 'GUARD' | 'HACKER' | 'RUNNER';
 export type RivalPhase = 'PLAYING' | 'ASSIGN_DUTY' | 'PAUSED' | 'ENDING';
+export type RivalArenaId = 'BULLION_HALL' | 'LASER_ROTUNDA' | 'TWIN_VAULTS';
+export type RivalBotDifficulty = 'OPERATIVE' | 'TACTICIAN' | 'MASTERMIND';
+
+export interface RivalInputState extends InputState {
+  dash?: boolean;
+}
 
 export const RIVAL_TOTAL_LOOPS = 6;
 export const RIVAL_MAX_ECHOES_PER_PLAYER = 4;
 export const RIVAL_CARRY_SPEED_MULT = 0.85; // -15% speed while carrying gold
 export const RIVAL_GUARD_STUN_SECONDS = 1.2;
+export const RIVAL_GUARD_THREAT_RADIUS = 34;
+export const RIVAL_HACKER_JAM_RADIUS = 55;
+export const RIVAL_HACKER_SLOW_MULT = 0.75; // -25% enemy speed inside ECM field
 export const RIVAL_RUNNER_SPEED_MULT = 1.2;
 export const RIVAL_ASSIGN_DURATION_SECONDS = 3.0;
+export const RIVAL_DASH_DURATION_SECONDS = 0.18;
+export const RIVAL_DASH_COOLDOWN_SECONDS = 2.5;
+export const RIVAL_DASH_SPEED_MULT = 2.1;
+export const RIVAL_TACKLE_STUN_SECONDS = 0.9;
+export const RIVAL_ECHO_GATE_STUN_SECONDS = 1.0;
 
 export interface RivalStashDef {
   team: RivalTeam;
@@ -234,8 +291,9 @@ export interface RivalGoldItem {
   id: string;
   x: number;
   y: number;
-  value: 1 | 3;
+  value: 1 | 2 | 3;
   isCrown: boolean;
+  isDiamond?: boolean;
   location: 'VAULT' | 'FLOOR' | 'CARRIED' | 'BANKED';
   carrierId: string | null; // 'P1', 'P2', or echo string id
 }
@@ -250,6 +308,10 @@ export interface RivalPlayerState {
   stunTimer: number;
   stunImmunityTimer: number;
   stealCooldown: number;
+  dashTimer?: number;
+  dashCooldown?: number;
+  dashDirX?: number;
+  dashDirY?: number;
   walkPhase: number;
   squashX: number;
   squashY: number;
@@ -279,8 +341,12 @@ export interface RivalStatsSnapshot {
   p2Stuns: number;
   p1EchoesDeployed: number;
   p2EchoesDeployed: number;
+  p1Tackles?: number;
+  p2Tackles?: number;
   winner: 'P1' | 'P2' | 'DRAW';
   vsBot: boolean;
+  arenaId?: RivalArenaId;
+  botDifficulty?: RivalBotDifficulty;
 }
 
 export interface RivalSimEvent {
@@ -293,6 +359,10 @@ export interface RivalSimEvent {
     | 'GOLD_BANK'
     | 'GOLD_STEAL'
     | 'GUARD_STUN'
+    | 'DASH_TACKLE'
+    | 'ECHO_ZAPPED'
+    | 'DIAMOND_SPAWN'
+    | 'CORRIDOR_DROP'
     | 'LASER_HIT'
     | 'LOOP_END'
     | 'CROWN_SPAWN'
@@ -306,6 +376,8 @@ export interface RivalGameState {
   loopNumber: number; // 1..6
   tick: number; // 0..599
   vsBot: boolean;
+  arenaId?: RivalArenaId;
+  botDifficulty?: RivalBotDifficulty;
   p1: RivalPlayerState;
   p2: RivalPlayerState;
   p1Recording: RecordedFrame[];
@@ -328,14 +400,17 @@ export interface RivalGameState {
   p2Stuns: number;
   p1EchoesDeployed: number;
   p2EchoesDeployed: number;
+  p1Tackles?: number;
+  p2Tackles?: number;
   shakeTimer: number;
   shakeIntensity: number;
   rewindFlashTimer: number;
   bannerText: string | null;
   bannerTimer: number;
+  liveBanter?: RadioTransmission | null;
+  liveBanterTimer?: number;
   matchEnded: boolean;
   awaitingDutyAssignment: boolean;
   particles: Particle[];
   particleCursor: number;
 }
-

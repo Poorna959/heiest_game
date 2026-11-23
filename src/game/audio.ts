@@ -290,22 +290,60 @@ class SoundEngine {
     osc.stop(now + 0.17);
   }
 
-  /** Very quiet soft radio beep synced to typewriter characters */
-  public playRadioBlip(): void {
+  /** Very quiet soft radio beep synced to typewriter characters (speaker-pitched) */
+  public playRadioBlip(baseFreq = 1020): void {
     const ctx = this.getReadyContext();
     if (!ctx) return;
 
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1020 + (Math.random() - 0.5) * 140, now);
+    osc.type = baseFreq < 750 ? 'triangle' : 'sine';
+    osc.frequency.setValueAtTime(baseFreq + (Math.random() - 0.5) * 120, now);
     gain.gain.setValueAtTime(0.022, now);
     gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.024);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
     osc.stop(now + 0.028);
+  }
+
+  /** High-energy Chrono-Dash burst whoosh */
+  public playChronoDash(): void {
+    const ctx = this.getReadyContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(280, now);
+    osc.frequency.exponentialRampToValueAtTime(860, now + 0.14);
+    gain.gain.setValueAtTime(0.11, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.17);
+  }
+
+  /** Punchy shoulder tackle impact when Chrono-Dash knocks gold loose */
+  public playTackleHit(): void {
+    const ctx = this.getReadyContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(195, now);
+    osc.frequency.exponentialRampToValueAtTime(52, now + 0.18);
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.21);
   }
 }
 

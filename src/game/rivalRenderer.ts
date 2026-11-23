@@ -4,11 +4,14 @@ import {
   Gate,
   PLAYER_RADIUS,
   Plate,
+  RIVAL_DASH_COOLDOWN_SECONDS,
+  RIVAL_GUARD_THREAT_RADIUS,
+  RIVAL_HACKER_JAM_RADIUS,
   RIVAL_TOTAL_LOOPS,
+  RivalArenaId,
   RivalEcho,
   RivalGameState,
   RivalGoldItem,
-  RivalPlayerState,
   RivalRole,
   RivalStashDef,
   RivalTeam,
@@ -19,7 +22,10 @@ import { getRemainingSeconds } from './engine';
 import {
   getActiveRivalLaserSegments,
   getActiveRivalLasers,
+  getRivalEchoFrameIndex,
+  isStashShieldedByHacker,
 } from './rivalEngine';
+import { RIVAL_ARENAS } from './rivalMaps';
 
 const COLOR_FLOOR = '#0B0D12';
 const COLOR_GRID = '#141923';
@@ -31,12 +37,14 @@ const COLOR_GOLD = '#FFD166';
 const COLOR_SWITCH_ON = '#22C55E';
 const COLOR_LASER = '#EF4444';
 
-let rivalFloorCache: HTMLCanvasElement | null = null;
+const rivalFloorCache = new Map<RivalArenaId, HTMLCanvasElement>();
 
-function getRivalFloorCache(): HTMLCanvasElement | null {
+function getRivalFloorCache(arenaId: RivalArenaId): HTMLCanvasElement | null {
   if (typeof document === 'undefined') return null;
-  if (rivalFloorCache) return rivalFloorCache;
+  const cached = rivalFloorCache.get(arenaId);
+  if (cached) return cached;
 
+  const arena = RIVAL_ARENAS[arenaId] ?? RIVAL_ARENAS.BULLION_HALL;
   const off = document.createElement('canvas');
   off.width = CANVAS_WIDTH;
   off.height = CANVAS_HEIGHT;
@@ -67,21 +75,28 @@ function getRivalFloorCache(): HTMLCanvasElement | null {
   }
   ctx.stroke();
 
-  // Center Royal Vault floor trim highlight
+  // Arena-specific center vault trim highlight
   ctx.fillStyle = 'rgba(255, 209, 102, 0.04)';
-  ctx.fillRect(384, 144, 192, 252);
   ctx.strokeStyle = 'rgba(255, 209, 102, 0.14)';
   ctx.lineWidth = 1;
   ctx.setLineDash([6, 6]);
-  ctx.strokeRect(390, 150, 180, 240);
+  if (arenaId === 'TWIN_VAULTS') {
+    ctx.fillRect(394, 24, 172, 146);
+    ctx.strokeRect(400, 30, 160, 134);
+    ctx.fillRect(394, 370, 172, 146);
+    ctx.strokeRect(400, 376, 160, 134);
+  } else {
+    ctx.fillRect(384, 144, 192, 252);
+    ctx.strokeRect(390, 150, 180, 240);
+  }
   ctx.setLineDash([]);
 
-  ctx.fillStyle = 'rgba(255, 209, 102, 0.22)';
+  ctx.fillStyle = 'rgba(255, 209, 102, 0.24)';
   ctx.font = '700 10px "SFMono-Regular", Menlo, Consolas, monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('ROYAL VAULT', 480, 166);
+  ctx.fillText(arena.name, 480, arenaId === 'TWIN_VAULTS' ? 273 : 166);
 
-  rivalFloorCache = off;
+  rivalFloorCache.set(arenaId, off);
   return off;
 }
 
@@ -89,6 +104,7 @@ function drawStash(
   ctx: CanvasRenderingContext2D,
   stash: RivalStashDef,
   score: number,
+  shielded: boolean,
   timeSec: number
 ): void {
   const isP1 = stash.team === 'P1';
@@ -101,16 +117,20 @@ function drawStash(
     : `rgba(56, 189, 248, ${0.1 + pulse * 0.05})`;
   ctx.fillRect(stash.x, stash.y, stash.w, stash.h);
 
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = shielded ? COLOR_SWITCH_ON : accent;
+  ctx.lineWidth = shielded ? 2.8 : 2;
   ctx.strokeRect(stash.x, stash.y, stash.w, stash.h);
 
   // Label
-  ctx.fillStyle = accent;
+  ctx.fillStyle = shielded ? COLOR_SWITCH_ON : accent;
   ctx.font = '700 9px "SFMono-Regular", Menlo, Consolas, monospace';
   ctx.textAlign = 'center';
   ctx.fillText(
-    isP1 ? 'KYOTO STASH' : 'OSLO STASH',
+    shielded
+      ? 'ECM SHIELDED'
+      : isP1
+      ? 'KYOTO STASH'
+      : 'OSLO STASH',
     stash.x + stash.w * 0.5,
     stash.y - 8
   );
@@ -235,6 +255,7 @@ function drawRivalGate(
   timeSec: number
 ): void {
   const closedness = 1 - openProgress;
+  const vertical = gate.h > gate.w;
   ctx.save();
 
   if (openProgress >= 0.4) {
@@ -249,12 +270,20 @@ function drawRivalGate(
     const pulse = 0.8 + 0.2 * Math.sin(timeSec * 14);
     ctx.globalAlpha = closedness;
     ctx.fillStyle = `rgba(239, 68, 68, ${0.3 * pulse})`;
-    ctx.fillRect(gate.x - 4, gate.y, gate.w + 8, gate.h);
-    const cx = gate.x + gate.w * 0.5;
-    ctx.fillStyle = COLOR_LASER;
-    ctx.fillRect(cx - 4, gate.y, 8, gate.h);
-    ctx.fillStyle = '#FECACA';
-    ctx.fillRect(cx - 1.5, gate.y, 3, gate.h);
+    ctx.fillRect(gate.x - 4, gate.y - 2, gate.w + 8, gate.h + 4);
+    if (vertical) {
+      const cx = gate.x + gate.w * 0.5;
+      ctx.fillStyle = COLOR_LASER;
+      ctx.fillRect(cx - 4, gate.y, 8, gate.h);
+      ctx.fillStyle = '#FECACA';
+      ctx.fillRect(cx - 1.5, gate.y, 3, gate.h);
+    } else {
+      const cy = gate.y + gate.h * 0.5;
+      ctx.fillStyle = COLOR_LASER;
+      ctx.fillRect(gate.x, cy - 4, gate.w, 8);
+      ctx.fillStyle = '#FECACA';
+      ctx.fillRect(gate.x, cy - 1.5, gate.w, 3);
+    }
     ctx.globalAlpha = 1;
   }
 
@@ -262,16 +291,31 @@ function drawRivalGate(
   ctx.fillStyle = '#334155';
   ctx.strokeStyle = openProgress > 0.4 ? COLOR_SWITCH_ON : COLOR_LASER;
   ctx.lineWidth = 1.5;
-  ctx.fillRect(gate.x - 2, gate.y - 4, gate.w + 4, 8);
-  ctx.strokeRect(gate.x - 2, gate.y - 4, gate.w + 4, 8);
-  ctx.fillRect(gate.x - 2, gate.y + gate.h - 4, gate.w + 4, 8);
-  ctx.strokeRect(gate.x - 2, gate.y + gate.h - 4, gate.w + 4, 8);
+  if (vertical) {
+    ctx.fillRect(gate.x - 2, gate.y - 4, gate.w + 4, 8);
+    ctx.strokeRect(gate.x - 2, gate.y - 4, gate.w + 4, 8);
+    ctx.fillRect(gate.x - 2, gate.y + gate.h - 4, gate.w + 4, 8);
+    ctx.strokeRect(gate.x - 2, gate.y + gate.h - 4, gate.w + 4, 8);
+  } else {
+    ctx.fillRect(gate.x - 4, gate.y - 2, 8, gate.h + 4);
+    ctx.strokeRect(gate.x - 4, gate.y - 2, 8, gate.h + 4);
+    ctx.fillRect(gate.x + gate.w - 4, gate.y - 2, 8, gate.h + 4);
+    ctx.strokeRect(gate.x + gate.w - 4, gate.y - 2, 8, gate.h + 4);
+  }
 
   // Linked badge A or B on outer corridor side
   const isLeft = gate.id === 'gate-left';
   const badge = isLeft ? 'A' : 'B';
-  const bx = isLeft ? gate.x - 16 : gate.x + gate.w + 16;
-  const by = gate.y + 14;
+  const bx = vertical
+    ? isLeft
+      ? gate.x - 16
+      : gate.x + gate.w + 16
+    : gate.x + gate.w * 0.5;
+  const by = vertical
+    ? gate.y + 14
+    : isLeft
+    ? gate.y + gate.h + 15
+    : gate.y - 15;
   ctx.fillStyle = 'rgba(11, 13, 18, 0.92)';
   ctx.strokeStyle = openProgress > 0.4 ? COLOR_SWITCH_ON : COLOR_LASER;
   ctx.lineWidth = 1.25;
@@ -344,6 +388,30 @@ function drawGoldItem(
     ctx.font = '800 9px "SFMono-Regular", Menlo, Consolas, monospace';
     ctx.textAlign = 'center';
     ctx.fillText('3-PT CROWN', 0, 22 - bob);
+  } else if (item.isDiamond) {
+    // 2-Point Diamond Briefcase (Loop 3)
+    const pulse = 0.5 + 0.5 * Math.sin(timeSec * 5.5);
+    ctx.fillStyle = `rgba(56, 189, 248, ${0.22 + pulse * 0.16})`;
+    ctx.beginPath();
+    ctx.arc(0, 0, 22 + pulse * 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#38BDF8';
+    ctx.strokeStyle = '#E0F2FE';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(0, -12);
+    ctx.lineTo(12, 0);
+    ctx.lineTo(0, 12);
+    ctx.lineTo(-12, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#BAE6FD';
+    ctx.font = '800 9px "SFMono-Regular", Menlo, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('2-PT DIAMOND', 0, 21 - bob);
   } else {
     // Standard 1-Point Gold Bullion Bar
     ctx.fillStyle = 'rgba(255, 209, 102, 0.16)';
@@ -429,13 +497,76 @@ function drawRivalCharacter(
   isEcho: boolean,
   role: RivalRole | null,
   walkPhase: number,
-  timeSec: number
+  timeSec: number,
+  dashTimer = 0,
+  dashCooldown = 0
 ): void {
   const accent = team === 'P1' ? COLOR_P1 : COLOR_P2;
   const darkRim = team === 'P1' ? '#991B1B' : '#0369A1';
 
   ctx.save();
   ctx.translate(x, y);
+
+  // Tactical aura rings for GUARD (34px threat) and HACKER (55px ECM jammer)
+  if (isEcho && stunTimer <= 0) {
+    if (role === 'GUARD') {
+      const pulse = 0.5 + 0.5 * Math.sin(timeSec * 6);
+      ctx.fillStyle =
+        team === 'P1'
+          ? `rgba(230, 57, 70, ${0.06 + pulse * 0.05})`
+          : `rgba(56, 189, 248, ${0.06 + pulse * 0.05})`;
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.arc(0, 0, RIVAL_GUARD_THREAT_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (role === 'HACKER') {
+      ctx.fillStyle =
+        team === 'P1'
+          ? 'rgba(230, 57, 70, 0.045)'
+          : 'rgba(56, 189, 248, 0.045)';
+      ctx.strokeStyle =
+        team === 'P1'
+          ? 'rgba(230, 57, 70, 0.45)'
+          : 'rgba(56, 189, 248, 0.45)';
+      ctx.lineWidth = 1.25;
+      ctx.setLineDash([8, 6]);
+      ctx.lineDashOffset = -(timeSec * 24);
+      ctx.beginPath();
+      ctx.arc(0, 0, RIVAL_HACKER_JAM_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Chrono-Dash burst glow & cooldown ring on live players
+  if (!isEcho) {
+    if (dashTimer > 0) {
+      ctx.strokeStyle = '#F8FAFC';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, PLAYER_RADIUS + 7, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (dashCooldown > 0) {
+      const readyFrac =
+        1 - Math.min(1, dashCooldown / RIVAL_DASH_COOLDOWN_SECONDS);
+      ctx.strokeStyle = 'rgba(248, 250, 252, 0.32)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(
+        0,
+        0,
+        PLAYER_RADIUS + 5,
+        -Math.PI * 0.5,
+        -Math.PI * 0.5 + Math.PI * 2 * readyFrac
+      );
+      ctx.stroke();
+    }
+  }
 
   if (isEcho) {
     ctx.globalAlpha = 0.58;
@@ -561,11 +692,7 @@ function drawRivalEchoes(
   const allEchoes: RivalEcho[] = [...state.p1Echoes, ...state.p2Echoes];
   for (const echo of allEchoes) {
     if (echo.frames.length === 0) continue;
-    const speedMult = echo.role === 'RUNNER' ? 1.2 : 1.0;
-    const headIdx = Math.min(
-      Math.floor(state.tick * speedMult),
-      echo.frames.length - 1
-    );
+    const headIdx = getRivalEchoFrameIndex(echo, state.tick);
     const tailStart = Math.max(0, headIdx - 18);
     if (headIdx > tailStart) {
       ctx.save();
@@ -609,8 +736,9 @@ function drawRivalLasers(
   state: RivalGameState,
   timeSec: number
 ): void {
-  const lasers = getActiveRivalLasers(state.loopNumber);
-  const segs = getActiveRivalLaserSegments(state.loopNumber, state.tick);
+  const arenaId = state.arenaId ?? 'BULLION_HALL';
+  const lasers = getActiveRivalLasers(state.loopNumber, arenaId);
+  const segs = getActiveRivalLaserSegments(state.loopNumber, state.tick, arenaId);
   const pulse = 0.8 + 0.2 * Math.sin(timeSec * 16);
 
   for (let i = 0; i < lasers.length; i++) {
@@ -712,15 +840,28 @@ export function renderRivalGame(
     ctx.translate((Math.random() * 2 - 1) * mag, (Math.random() * 2 - 1) * mag);
   }
 
-  const floor = getRivalFloorCache();
+  const arenaId = state.arenaId ?? 'BULLION_HALL';
+  const floor = getRivalFloorCache(arenaId);
   if (floor) ctx.drawImage(floor, 0, 0);
   else {
     ctx.fillStyle = COLOR_FLOOR;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
-  drawStash(ctx, state.stashes.P1, state.p1Score, timeSec);
-  drawStash(ctx, state.stashes.P2, state.p2Score, timeSec);
+  drawStash(
+    ctx,
+    state.stashes.P1,
+    state.p1Score,
+    isStashShieldedByHacker(state, 'P1'),
+    timeSec
+  );
+  drawStash(
+    ctx,
+    state.stashes.P2,
+    state.p2Score,
+    isStashShieldedByHacker(state, 'P2'),
+    timeSec
+  );
   drawRivalWires(ctx, state, timeSec);
 
   for (const plate of state.plates) {
@@ -761,7 +902,9 @@ export function renderRivalGame(
     false,
     null,
     state.p1.walkPhase,
-    timeSec
+    timeSec,
+    state.p1.dashTimer ?? 0,
+    state.p1.dashCooldown ?? 0
   );
   drawRivalCharacter(
     ctx,
@@ -774,7 +917,9 @@ export function renderRivalGame(
     false,
     null,
     state.p2.walkPhase,
-    timeSec
+    timeSec,
+    state.p2.dashTimer ?? 0,
+    state.p2.dashCooldown ?? 0
   );
 
   // Pooled particles

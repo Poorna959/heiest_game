@@ -1,4 +1,5 @@
 import React from 'react';
+import { RIVAL_ARENAS } from '../game/rivalMaps';
 import { RivalStatsSnapshot } from '../types';
 
 interface RivalNewspaperEndingProps {
@@ -39,9 +40,15 @@ export const RivalNewspaperEnding: React.FC<RivalNewspaperEndingProps> = ({
         {/* Masthead */}
         <header className="border-b-4 border-double border-[#1A1A1A] pb-2.5">
           <div className="flex items-center justify-between font-mono-timer text-[11px] font-semibold tracking-[0.18em] text-[#4B463F]">
-            <span>RIVAL HEIST EDITION · 6-LOOP SHOWDOWN</span>
+            <span>
+              {RIVAL_ARENAS[stats.arenaId ?? 'BULLION_HALL'].name} · 6-LOOP SHOWDOWN
+            </span>
             <span>ROYAL MINT SPECIAL DISPATCH</span>
-            <span>{stats.vsBot ? 'MODE: 1P VS AI BOT' : 'MODE: 2P LOCAL'}</span>
+            <span>
+              {stats.vsBot
+                ? `MODE: 1P VS AI (${stats.botDifficulty ?? 'TACTICIAN'})`
+                : 'MODE: 2P LOCAL'}
+            </span>
           </div>
 
           <div className="relative mt-1 flex items-center justify-center">
@@ -210,7 +217,19 @@ export const RivalNewspaperEnding: React.FC<RivalNewspaperEndingProps> = ({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-3 items-baseline py-2.5">
+                <div className="grid grid-cols-3 items-baseline py-2">
+                  <span className="text-xs font-semibold text-[#4B463F]">
+                    CHRONO-TACKLES
+                  </span>
+                  <span className="text-right text-xl font-bold text-[#141414]">
+                    {stats.p1Tackles ?? 0}
+                  </span>
+                  <span className="text-right text-xl font-bold text-[#141414]">
+                    {stats.p2Tackles ?? 0}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 items-baseline py-2">
                   <span className="text-xs font-semibold text-[#4B463F]">
                     ECHOES DEPLOYED
                   </span>

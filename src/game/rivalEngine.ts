@@ -3,22 +3,31 @@ import {
   CANVAS_WIDTH,
   FIXED_DT,
   Gate,
-  InputState,
   LaserSegment,
   LOOP_TICKS,
   Particle,
   Plate,
   PLAYER_RADIUS,
   PLAYER_SPEED,
-  RecordedFrame,
   RIVAL_CARRY_SPEED_MULT,
+  RIVAL_DASH_COOLDOWN_SECONDS,
+  RIVAL_DASH_DURATION_SECONDS,
+  RIVAL_DASH_SPEED_MULT,
+  RIVAL_ECHO_GATE_STUN_SECONDS,
   RIVAL_GUARD_STUN_SECONDS,
+  RIVAL_GUARD_THREAT_RADIUS,
+  RIVAL_HACKER_JAM_RADIUS,
+  RIVAL_HACKER_SLOW_MULT,
   RIVAL_MAX_ECHOES_PER_PLAYER,
   RIVAL_RUNNER_SPEED_MULT,
+  RIVAL_TACKLE_STUN_SECONDS,
   RIVAL_TOTAL_LOOPS,
+  RivalArenaId,
+  RivalBotDifficulty,
   RivalEcho,
   RivalGameState,
   RivalGoldItem,
+  RivalInputState,
   RivalPlayerState,
   RivalRole,
   RivalSimEvent,
@@ -33,120 +42,53 @@ import {
   distancePointToSegmentSq,
   getSweepingLaserSegment,
 } from './engine';
+import { RIVAL_ARENAS } from './rivalMaps';
+import { resolveRivalBanter } from './scriptEngine';
 
-const RIVAL_PARTICLE_POOL = 110;
-const BORDER = 20;
+const RIVAL_PARTICLE_POOL = 128;
 
-export const P1_SPAWN = { x: 138, y: 270 };
-export const P2_SPAWN = { x: 822, y: 270 };
+export const P1_SPAWN = RIVAL_ARENAS.BULLION_HALL.p1Spawn;
+export const P2_SPAWN = RIVAL_ARENAS.BULLION_HALL.p2Spawn;
 
 export const RIVAL_STASHES: { P1: RivalStashDef; P2: RivalStashDef } = {
   P1: { team: 'P1', x: 32, y: 205, w: 74, h: 130 },
   P2: { team: 'P2', x: 854, y: 205, w: 74, h: 130 },
 };
 
-export const RIVAL_WALLS: Wall[] = [
-  // Outer vault perimeter
-  { x: 0, y: 0, w: CANVAS_WIDTH, h: BORDER, material: 'steel' },
-  { x: 0, y: CANVAS_HEIGHT - BORDER, w: CANVAS_WIDTH, h: BORDER, material: 'steel' },
-  { x: 0, y: BORDER, w: BORDER, h: CANVAS_HEIGHT - BORDER * 2, material: 'steel' },
-  {
-    x: CANVAS_WIDTH - BORDER,
-    y: BORDER,
-    w: BORDER,
-    h: CANVAS_HEIGHT - BORDER * 2,
-    material: 'steel',
-  },
+export const RIVAL_WALLS: Wall[] = RIVAL_ARENAS.BULLION_HALL.walls;
+export const RIVAL_PLATES: Plate[] = RIVAL_ARENAS.BULLION_HALL.plates;
+export const RIVAL_GATES: Gate[] = RIVAL_ARENAS.BULLION_HALL.gates;
+export const RIVAL_LASERS_BASE: SweepingLaser[] =
+  RIVAL_ARENAS.BULLION_HALL.baseLasers;
+export const RIVAL_LASER_LOOP6_EXTRA: SweepingLaser =
+  RIVAL_ARENAS.BULLION_HALL.loop6ExtraLaser;
 
-  // Symmetric tactical cover baffles (leaving wide >= 100px lanes everywhere)
-  { x: 192, y: 175, w: 84, h: 24, material: 'steel' },
-  { x: 192, y: 341, w: 84, h: 24, material: 'steel' },
-  { x: 684, y: 175, w: 84, h: 24, material: 'steel' },
-  { x: 684, y: 341, w: 84, h: 24, material: 'steel' },
+export function getActiveRivalLasers(
+  loopNumber: number,
+  arenaId: RivalArenaId = 'BULLION_HALL'
+): SweepingLaser[] {
+  const arena = RIVAL_ARENAS[arenaId] ?? RIVAL_ARENAS.BULLION_HALL;
+  const raw =
+    loopNumber >= RIVAL_TOTAL_LOOPS
+      ? [...arena.baseLasers, arena.loop6ExtraLaser]
+      : arena.baseLasers;
 
-  // Center Royal Vault walls (x: 360..600, y: 120..420)
-  // Top & bottom bypass corridors: y=20..120 (100px) and y=420..520 (100px)
-  { x: 360, y: 120, w: 240, h: 24, material: 'steel' },
-  { x: 360, y: 396, w: 240, h: 24, material: 'steel' },
-  // Left vault doorway flanking Gate L (opening y: 215..325 = 110px)
-  { x: 360, y: 144, w: 24, h: 71, material: 'steel' },
-  { x: 360, y: 325, w: 24, h: 71, material: 'steel' },
-  // Right vault doorway flanking Gate R (opening y: 215..325 = 110px)
-  { x: 576, y: 144, w: 24, h: 71, material: 'steel' },
-  { x: 576, y: 325, w: 24, h: 71, material: 'steel' },
-];
-
-export const RIVAL_PLATES: Plate[] = [
-  // Symmetric diagonal pressure plates (equal ~187px from respective spawn)
-  { id: 'plate-left', label: 'A', x: 205, y: 78, w: 58, h: 58 },
-  { id: 'plate-right', label: 'B', x: 697, y: 404, w: 58, h: 58 },
-];
-
-export const RIVAL_GATES: Gate[] = [
-  {
-    id: 'gate-left',
-    linkedPlateIds: ['plate-left'],
-    x: 364,
-    y: 215,
-    w: 16,
-    h: 110,
-    wireWaypoints: [
-      { x: 234, y: 107 },
-      { x: 322, y: 107 },
-      { x: 322, y: 270 },
-      { x: 372, y: 270 },
-    ],
-  },
-  {
-    id: 'gate-right',
-    linkedPlateIds: ['plate-right'],
-    x: 580,
-    y: 215,
-    w: 16,
-    h: 110,
-    wireWaypoints: [
-      { x: 726, y: 433 },
-      { x: 638, y: 433 },
-      { x: 638, y: 270 },
-      { x: 588, y: 270 },
-    ],
-  },
-];
-
-// 1 sweeping center laser on Loops 1..5; 2 sweeping lasers on Loop 6
-export const RIVAL_LASERS_BASE: SweepingLaser[] = [
-  {
-    id: 'rival-sweep-h',
-    startA: { x: 404, y: 152 },
-    startB: { x: 404, y: 388 },
-    endA: { x: 556, y: 152 },
-    endB: { x: 556, y: 388 },
-    periodSeconds: 4.4,
-    phaseOffset: 0,
-  },
-];
-
-export const RIVAL_LASER_LOOP6_EXTRA: SweepingLaser = {
-  id: 'rival-sweep-v',
-  startA: { x: 392, y: 160 },
-  startB: { x: 568, y: 160 },
-  endA: { x: 392, y: 380 },
-  endB: { x: 568, y: 380 },
-  periodSeconds: 3.8,
-  phaseOffset: Math.PI / 2,
-};
-
-export function getActiveRivalLasers(loopNumber: number): SweepingLaser[] {
-  return loopNumber >= RIVAL_TOTAL_LOOPS
-    ? [...RIVAL_LASERS_BASE, RIVAL_LASER_LOOP6_EXTRA]
-    : RIVAL_LASERS_BASE;
+  // Loops 4..6: 20% laser speed overdrive
+  if (loopNumber >= 4) {
+    return raw.map((l) => ({
+      ...l,
+      periodSeconds: l.periodSeconds > 0 ? l.periodSeconds / 1.2 : 0,
+    }));
+  }
+  return raw;
 }
 
 export function getActiveRivalLaserSegments(
   loopNumber: number,
-  tick: number
+  tick: number,
+  arenaId: RivalArenaId = 'BULLION_HALL'
 ): LaserSegment[] {
-  return getActiveRivalLasers(loopNumber).map((l) =>
+  return getActiveRivalLasers(loopNumber, arenaId).map((l) =>
     getSweepingLaserSegment(l, tick)
   );
 }
@@ -197,28 +139,26 @@ function spawnRivalParticles(
   }
 }
 
-function createInitialGoldBars(): RivalGoldItem[] {
-  const coords = [
-    { x: 428, y: 196 },
-    { x: 480, y: 196 },
-    { x: 532, y: 196 },
-    { x: 428, y: 344 },
-    { x: 480, y: 344 },
-    { x: 532, y: 344 },
-  ];
-  return coords.map((pt, idx) => ({
+function createInitialGoldBars(arenaId: RivalArenaId): RivalGoldItem[] {
+  const arena = RIVAL_ARENAS[arenaId] ?? RIVAL_ARENAS.BULLION_HALL;
+  return arena.vaultGoldCoords.map((pt, idx) => ({
     id: `gold-${idx + 1}`,
     x: pt.x,
     y: pt.y,
     value: 1,
     isCrown: false,
+    isDiamond: false,
     location: 'VAULT',
     carrierId: null,
   }));
 }
 
-function createRivalPlayer(team: RivalTeam): RivalPlayerState {
-  const spawn = team === 'P1' ? P1_SPAWN : P2_SPAWN;
+function createRivalPlayer(
+  team: RivalTeam,
+  arenaId: RivalArenaId = 'BULLION_HALL'
+): RivalPlayerState {
+  const arena = RIVAL_ARENAS[arenaId] ?? RIVAL_ARENAS.BULLION_HALL;
+  const spawn = team === 'P1' ? arena.p1Spawn : arena.p2Spawn;
   return {
     team,
     name: team === 'P1' ? 'KYOTO' : 'OSLO',
@@ -229,6 +169,10 @@ function createRivalPlayer(team: RivalTeam): RivalPlayerState {
     stunTimer: 0,
     stunImmunityTimer: 0,
     stealCooldown: 0,
+    dashTimer: 0,
+    dashCooldown: 0,
+    dashDirX: team === 'P1' ? 1 : -1,
+    dashDirY: 0,
     walkPhase: 0,
     squashX: 1,
     squashY: 1,
@@ -236,29 +180,36 @@ function createRivalPlayer(team: RivalTeam): RivalPlayerState {
   };
 }
 
-export function createInitialRivalState(vsBot = false): RivalGameState {
+export function createInitialRivalState(
+  vsBot = false,
+  arenaId: RivalArenaId = 'BULLION_HALL',
+  botDifficulty: RivalBotDifficulty = 'TACTICIAN'
+): RivalGameState {
+  const arena = RIVAL_ARENAS[arenaId] ?? RIVAL_ARENAS.BULLION_HALL;
   const gateOpenProgress: Record<string, number> = {};
-  for (const g of RIVAL_GATES) {
+  for (const g of arena.gates) {
     gateOpenProgress[g.id] = 0;
   }
   return {
     loopNumber: 1,
     tick: 0,
     vsBot,
-    p1: createRivalPlayer('P1'),
-    p2: createRivalPlayer('P2'),
+    arenaId: arena.id,
+    botDifficulty,
+    p1: createRivalPlayer('P1', arena.id),
+    p2: createRivalPlayer('P2', arena.id),
     p1Recording: [],
     p2Recording: [],
     p1Echoes: [],
     p2Echoes: [],
     nextEchoSeq: 1,
-    walls: RIVAL_WALLS,
-    plates: RIVAL_PLATES,
-    gates: RIVAL_GATES,
+    walls: arena.walls,
+    plates: arena.plates,
+    gates: arena.gates,
     stashes: RIVAL_STASHES,
     activePlateIds: new Set<string>(),
     gateOpenProgress,
-    goldItems: createInitialGoldBars(),
+    goldItems: createInitialGoldBars(arena.id),
     p1Score: 0,
     p2Score: 0,
     p1Stolen: 0,
@@ -267,11 +218,15 @@ export function createInitialRivalState(vsBot = false): RivalGameState {
     p2Stuns: 0,
     p1EchoesDeployed: 0,
     p2EchoesDeployed: 0,
+    p1Tackles: 0,
+    p2Tackles: 0,
     shakeTimer: 0,
     shakeIntensity: 0,
     rewindFlashTimer: 0,
-    bannerText: 'LOOP 1 OF 6 · RAID THE ROYAL VAULT',
+    bannerText: `LOOP 1 OF ${RIVAL_TOTAL_LOOPS} · ${arena.name}`,
     bannerTimer: 2.0,
+    liveBanter: null,
+    liveBanterTimer: 0,
     matchEnded: false,
     awaitingDutyAssignment: false,
     particles: createRivalParticlePool(),
@@ -343,6 +298,48 @@ function dropCarriedGold(
   item.y = safe.y;
 }
 
+/** Returns true if the defending team has an active HACKER echo shielding its own stash */
+export function isStashShieldedByHacker(
+  state: RivalGameState,
+  defendingTeam: RivalTeam
+): boolean {
+  const stash = defendingTeam === 'P1' ? state.stashes.P1 : state.stashes.P2;
+  const stashCx = stash.x + stash.w * 0.5;
+  const stashCy = stash.y + stash.h * 0.5;
+  const defenders = defendingTeam === 'P1' ? state.p1Echoes : state.p2Echoes;
+  const shieldR2 = (RIVAL_HACKER_JAM_RADIUS + 18) ** 2;
+
+  for (const e of defenders) {
+    if (e.role !== 'HACKER' || e.stunTimer > 0) continue;
+    const dx = e.x - stashCx;
+    const dy = e.y - stashCy;
+    if (dx * dx + dy * dy <= shieldR2) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Returns true if a point is inside an enemy HACKER echo's 55px ECM Jamming Field */
+function isJammedByEnemyHacker(
+  state: RivalGameState,
+  team: RivalTeam,
+  x: number,
+  y: number
+): boolean {
+  const enemyEchoes = team === 'P1' ? state.p2Echoes : state.p1Echoes;
+  const jamR2 = RIVAL_HACKER_JAM_RADIUS * RIVAL_HACKER_JAM_RADIUS;
+  for (const e of enemyEchoes) {
+    if (e.role !== 'HACKER' || e.stunTimer > 0) continue;
+    const dx = e.x - x;
+    const dy = e.y - y;
+    if (dx * dx + dy * dy <= jamR2) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function tryGrabOrBankGold(
   state: RivalGameState,
   actorId: string,
@@ -388,8 +385,8 @@ function tryGrabOrBankGold(
           state,
           ownStash.x + ownStash.w * 0.5,
           ownStash.y + ownStash.h * 0.5,
-          item.isCrown ? 26 : 16,
-          '#FFD166',
+          item.isCrown ? 26 : item.isDiamond ? 22 : 16,
+          item.isDiamond ? '#38BDF8' : '#FFD166',
           45,
           190,
           2.5,
@@ -399,6 +396,9 @@ function tryGrabOrBankGold(
         if (item.isCrown) {
           state.bannerText = `${team === 'P1' ? 'KYOTO' : 'OSLO'} BANKED THE 3-PT CROWN!`;
           state.bannerTimer = 2.0;
+        } else if (item.isDiamond) {
+          state.bannerText = `${team === 'P1' ? 'KYOTO' : 'OSLO'} BANKED THE 2-PT DIAMOND CASE!`;
+          state.bannerTimer = 1.8;
         }
       }
     } else {
@@ -425,8 +425,8 @@ function tryGrabOrBankGold(
         state,
         g.x,
         g.y,
-        g.isCrown ? 20 : 12,
-        '#FFD166',
+        g.isCrown ? 20 : g.isDiamond ? 16 : 12,
+        g.isDiamond ? '#38BDF8' : '#FFD166',
         40,
         140,
         2,
@@ -437,11 +437,12 @@ function tryGrabOrBankGold(
     }
   }
 
-  // Check stealing 1 gold bar directly from rival's Stash if it has gold
+  // Check stealing 1 gold bar directly from rival's Stash (blocked if rival HACKER shields it!)
   const rivalScore = rivalTeam === 'P1' ? state.p1Score : state.p2Score;
   if (
     rivalScore > 0 &&
     getStealCd() <= 0 &&
+    !isStashShieldedByHacker(state, rivalTeam) &&
     circleIntersectsRect(
       x,
       y,
@@ -464,6 +465,7 @@ function tryGrabOrBankGold(
       y,
       value: 1,
       isCrown: false,
+      isDiamond: false,
       location: 'CARRIED',
       carrierId: actorId,
     };
@@ -488,14 +490,28 @@ function tryGrabOrBankGold(
   }
 }
 
+/**
+ * Computes deterministic frame index for Rival echoes.
+ * RUNNER echoes replay at 1.2x speed and ping-pong reverse back along their path
+ * once they reach the end of their recorded frames.
+ */
+export function getRivalEchoFrameIndex(echo: RivalEcho, tick: number): number {
+  const len = echo.frames.length;
+  if (len <= 1) return 0;
+  if (echo.role === 'RUNNER') {
+    const rawIdx = Math.floor(tick * RIVAL_RUNNER_SPEED_MULT);
+    const maxIdx = len - 1;
+    const cycle = maxIdx * 2;
+    const pos = rawIdx % cycle;
+    return pos <= maxIdx ? pos : cycle - pos;
+  }
+  return Math.min(tick, len - 1);
+}
+
 function updateEchoPose(echo: RivalEcho, tick: number): void {
   if (echo.frames.length === 0) return;
-  if (echo.stunTimer > 0) return; // Stunned runners freeze in place
-  const speedMult = echo.role === 'RUNNER' ? RIVAL_RUNNER_SPEED_MULT : 1.0;
-  const idx = Math.min(
-    Math.floor(tick * speedMult),
-    echo.frames.length - 1
-  );
+  if (echo.stunTimer > 0) return; // Stunned echoes freeze in place
+  const idx = getRivalEchoFrameIndex(echo, tick);
   const f = echo.frames[idx];
   echo.x = f.x;
   echo.y = f.y;
@@ -506,17 +522,18 @@ function isGateOpen(state: RivalGameState, gate: Gate): boolean {
   return gate.linkedPlateIds.every((id) => state.activePlateIds.has(id));
 }
 
-function checkLaserHitForPlayer(
+function checkLaserHitAtPoint(
   state: RivalGameState,
-  player: RivalPlayerState,
+  x: number,
+  y: number,
   laserSegments: LaserSegment[]
 ): boolean {
   for (const gate of state.gates) {
     if ((state.gateOpenProgress[gate.id] ?? 0) < 0.4) {
       if (
         circleIntersectsRect(
-          player.x,
-          player.y,
+          x,
+          y,
           PLAYER_RADIUS - 2.5,
           gate.x,
           gate.y,
@@ -531,8 +548,7 @@ function checkLaserHitForPlayer(
   const hitR2 = (PLAYER_RADIUS - 2) ** 2;
   for (const seg of laserSegments) {
     if (
-      distancePointToSegmentSq(player.x, player.y, seg.ax, seg.ay, seg.bx, seg.by) <=
-      hitR2
+      distancePointToSegmentSq(x, y, seg.ax, seg.ay, seg.bx, seg.by) <= hitR2
     ) {
       return true;
     }
@@ -543,10 +559,15 @@ function checkLaserHitForPlayer(
 function moveRivalPlayer(
   state: RivalGameState,
   player: RivalPlayerState,
-  input: InputState
+  input: RivalInputState
 ): void {
+  if ((player.dashCooldown ?? 0) > 0) {
+    player.dashCooldown = Math.max(0, (player.dashCooldown ?? 0) - FIXED_DT);
+  }
+
   if (player.stunTimer > 0) {
     player.stunTimer = Math.max(0, player.stunTimer - FIXED_DT);
+    player.dashTimer = 0;
     if (player.stunTimer === 0) {
       player.stunImmunityTimer = 0.85;
     }
@@ -574,7 +595,48 @@ function moveRivalPlayer(
     player.facing = Math.atan2(dy, dx);
   }
 
-  const speedMult = player.carriedGoldId ? RIVAL_CARRY_SPEED_MULT : 1.0;
+  // Trigger Chrono-Dash burst if requested and off cooldown
+  if (
+    input.dash &&
+    (player.dashTimer ?? 0) <= 0 &&
+    (player.dashCooldown ?? 0) <= 0
+  ) {
+    player.dashTimer = RIVAL_DASH_DURATION_SECONDS;
+    player.dashCooldown = RIVAL_DASH_COOLDOWN_SECONDS;
+    if (dx !== 0 || dy !== 0) {
+      player.dashDirX = dx;
+      player.dashDirY = dy;
+    } else {
+      player.dashDirX = Math.cos(player.facing);
+      player.dashDirY = Math.sin(player.facing);
+    }
+    spawnRivalParticles(
+      state,
+      player.x,
+      player.y,
+      10,
+      player.team === 'P1' ? '#E63946' : '#38BDF8',
+      50,
+      150,
+      2,
+      4
+    );
+  }
+
+  const isDashing = (player.dashTimer ?? 0) > 0;
+  if (isDashing) {
+    player.dashTimer = Math.max(0, (player.dashTimer ?? 0) - FIXED_DT);
+    dx = player.dashDirX ?? Math.cos(player.facing);
+    dy = player.dashDirY ?? Math.sin(player.facing);
+  }
+
+  let speedMult = player.carriedGoldId ? RIVAL_CARRY_SPEED_MULT : 1.0;
+  if (isDashing) {
+    speedMult *= RIVAL_DASH_SPEED_MULT;
+  } else if (isJammedByEnemyHacker(state, player.team, player.x, player.y)) {
+    speedMult *= RIVAL_HACKER_SLOW_MULT;
+  }
+
   const stepDist = PLAYER_SPEED * speedMult * FIXED_DT;
   const colR = PLAYER_RADIUS - 1;
 
@@ -600,28 +662,58 @@ function moveRivalPlayer(
 }
 
 /**
- * Deterministic tactical AI controller for Player 2 (Oslo) when VS AI BOT is enabled.
+ * Deterministic tactical AI controller for Player 2 (Oslo) across 3 difficulty tiers:
+ * OPERATIVE (casual), TACTICIAN (standard), MASTERMIND (hard).
  */
-export function computeBotInput(state: RivalGameState): InputState {
+export function computeBotInput(state: RivalGameState): RivalInputState {
   const bot = state.p2;
   if (bot.stunTimer > 0) {
-    return { up: false, down: false, left: false, right: false };
+    return { up: false, down: false, left: false, right: false, dash: false };
   }
+
+  const difficulty: RivalBotDifficulty = state.botDifficulty ?? 'TACTICIAN';
+  const arenaId: RivalArenaId = state.arenaId ?? 'BULLION_HALL';
+  const plateB = state.plates[1] ?? state.plates[0];
+  const plateBCx = plateB.x + plateB.w * 0.5;
+  const plateBCy = plateB.y + plateB.h * 0.5;
 
   const gateROpen = (state.gateOpenProgress['gate-right'] ?? 0) >= 0.45;
   const hasHackerEcho = state.p2Echoes.some((e) => e.role === 'HACKER');
 
-  let targetX = 726;
-  let targetY = 433;
+  let targetX = plateBCx;
+  let targetY = plateBCy;
+  let wantsDash = false;
 
-  // 1. Carrying gold -> sprint home to P2 Stash to bank
-  if (bot.carriedGoldId) {
-    if (bot.x < 576 && bot.y > 144 && bot.y < 396) {
-      // Inside vault: exit through right doorway
+  // MASTERMIND: Actively hunt & dash-tackle P1 if P1 is carrying gold/Crown nearby!
+  const p1Dist = Math.hypot(state.p1.x - bot.x, state.p1.y - bot.y);
+  if (
+    difficulty === 'MASTERMIND' &&
+    !bot.carriedGoldId &&
+    state.p1.carriedGoldId &&
+    state.p1.stunTimer <= 0 &&
+    p1Dist < 170
+  ) {
+    targetX = state.p1.x;
+    targetY = state.p1.y;
+    if (p1Dist < 95 && (bot.dashCooldown ?? 0) <= 0) {
+      wantsDash = true;
+    }
+  } else if (bot.carriedGoldId) {
+    // 1. Carrying gold -> sprint home to P2 Stash to bank
+    const carried = findGoldById(state, bot.carriedGoldId);
+    if (
+      difficulty !== 'OPERATIVE' &&
+      (carried?.isCrown || carried?.isDiamond) &&
+      (bot.dashCooldown ?? 0) <= 0 &&
+      bot.x > 580
+    ) {
+      wantsDash = true;
+    }
+
+    if (arenaId !== 'TWIN_VAULTS' && bot.x < 576 && bot.y > 144 && bot.y < 396) {
       targetX = 635;
       targetY = 270;
     } else if (bot.x < 360) {
-      // Returning from P1 raid: route via top or bottom highway
       targetX = 640;
       targetY = bot.y < 270 ? 70 : 470;
     } else {
@@ -630,12 +722,14 @@ export function computeBotInput(state: RivalGameState): InputState {
     }
   } else if (state.loopNumber === 1 && !hasHackerEcho && state.tick < 290) {
     // Loop 1 opening: stand on Plate B to record a dedicated HACKER echo
-    targetX = 726;
-    targetY = 433;
+    targetX = plateBCx;
+    targetY = plateBCy;
   } else {
-    // Check if there is a Crown or Gold item reachable
-    const crown = state.goldItems.find(
-      (g) => g.isCrown && (g.location === 'VAULT' || g.location === 'FLOOR')
+    // Check high-value Crown, Diamond, Floor loot, or Vault gold
+    const crownOrDiamond = state.goldItems.find(
+      (g) =>
+        (g.isCrown || g.isDiamond) &&
+        (g.location === 'VAULT' || g.location === 'FLOOR')
     );
     const floorGoldOutside = state.goldItems.find(
       (g) =>
@@ -653,17 +747,32 @@ export function computeBotInput(state: RivalGameState): InputState {
     if (floorGoldOutside) {
       targetX = floorGoldOutside.x;
       targetY = floorGoldOutside.y;
-    } else if (gateROpen && (crown || vaultGold)) {
-      const targetGold = crown ?? vaultGold;
-      // Enter cleanly via right doorway before turning inside vault
-      if (bot.x > 605 && Math.abs(bot.y - 270) > 42) {
+    } else if (gateROpen && (crownOrDiamond || vaultGold)) {
+      const targetGold = crownOrDiamond ?? vaultGold;
+      if (
+        arenaId !== 'TWIN_VAULTS' &&
+        bot.x > 605 &&
+        Math.abs(bot.y - 270) > 42
+      ) {
         targetX = 635;
         targetY = 270;
       } else {
         targetX = targetGold.x;
         targetY = targetGold.y;
+        if (
+          difficulty !== 'OPERATIVE' &&
+          (targetGold.isCrown || targetGold.isDiamond) &&
+          Math.hypot(targetX - bot.x, targetY - bot.y) < 110 &&
+          (bot.dashCooldown ?? 0) <= 0
+        ) {
+          wantsDash = true;
+        }
       }
-    } else if (state.p1Score > 0 && state.loopNumber >= 2) {
+    } else if (
+      state.p1Score > 0 &&
+      state.loopNumber >= 2 &&
+      !isStashShieldedByHacker(state, 'P1')
+    ) {
       // Flank via bottom or top corridor to raid P1's Stash!
       if (bot.x > 330 && bot.y > 110 && bot.y < 430) {
         targetX = bot.x > 610 ? 640 : 320;
@@ -676,19 +785,19 @@ export function computeBotInput(state: RivalGameState): InputState {
         targetY = 270;
       }
     } else if (!hasHackerEcho) {
-      targetX = 726;
-      targetY = 433;
+      targetX = plateBCx;
+      targetY = plateBCy;
     } else {
-      // Wait just outside Gate R ready for Hacker echo to unlock it
-      targetX = 635;
+      targetX = arenaId === 'TWIN_VAULTS' ? 480 : 635;
       targetY = 270;
     }
   }
 
-  // Steer cleanly around the 4 horizontal tactical cover baffles so the bot never snags
+  // Steer cleanly around horizontal cover baffles
   const baffles = state.walls.slice(4, 8);
   for (let i = 0; i < baffles.length; i++) {
     const b = baffles[i];
+    if (b.w < 40) continue;
     const padX = PLAYER_RADIUS + 8;
     const padY = PLAYER_RADIUS + 6;
     const crossingDown = bot.y < b.y + b.h * 0.5 && targetY > b.y + b.h;
@@ -699,10 +808,11 @@ export function computeBotInput(state: RivalGameState): InputState {
       if (botInX || targetInX) {
         const leftDetour = b.x - padX - 8;
         const rightDetour = b.x + b.w + padX + 8;
-        const distLeft = Math.abs(bot.x - leftDetour) + Math.abs(targetX - leftDetour);
-        const distRight = Math.abs(bot.x - rightDetour) + Math.abs(targetX - rightDetour);
-        const detourX = distLeft <= distRight ? leftDetour : rightDetour;
-        targetX = detourX;
+        const distLeft =
+          Math.abs(bot.x - leftDetour) + Math.abs(targetX - leftDetour);
+        const distRight =
+          Math.abs(bot.x - rightDetour) + Math.abs(targetX - rightDetour);
+        targetX = distLeft <= distRight ? leftDetour : rightDetour;
         if (botInX) {
           targetY = crossingDown ? b.y - padY - 4 : b.y + b.h + padY + 4;
         }
@@ -711,8 +821,27 @@ export function computeBotInput(state: RivalGameState): InputState {
     }
   }
 
-  // Avoid running into closed Gate R or sweeping center laser
-  const laserSegments = getActiveRivalLaserSegments(state.loopNumber, state.tick);
+  // TACTICIAN & MASTERMIND: Dodge enemy P1 GUARD echoes
+  if (difficulty !== 'OPERATIVE') {
+    for (const guard of state.p1Echoes) {
+      if (guard.role !== 'GUARD') continue;
+      const gx = bot.x - guard.x;
+      const gy = bot.y - guard.y;
+      const d2 = gx * gx + gy * gy;
+      if (d2 < 56 * 56 && d2 > 1) {
+        const d = Math.sqrt(d2);
+        targetX = bot.x + (gx / d) * 70;
+        targetY = bot.y + (gy / d) * 70;
+      }
+    }
+  }
+
+  // Avoid active sweeping lasers
+  const laserSegments = getActiveRivalLaserSegments(
+    state.loopNumber,
+    state.tick,
+    arenaId
+  );
   for (const seg of laserSegments) {
     const distSq = distancePointToSegmentSq(
       bot.x,
@@ -723,7 +852,6 @@ export function computeBotInput(state: RivalGameState): InputState {
       seg.by
     );
     if (distSq < 42 * 42) {
-      // Step perpendicular away from laser
       const mx = (seg.ax + seg.bx) * 0.5;
       const my = (seg.ay + seg.by) * 0.5;
       targetX = bot.x + (bot.x >= mx ? 60 : -60);
@@ -738,6 +866,7 @@ export function computeBotInput(state: RivalGameState): InputState {
     right: dx > 8,
     up: dy < -8,
     down: dy > 8,
+    dash: wantsDash,
   };
 }
 
@@ -746,11 +875,11 @@ export function chooseBotEchoDuty(state: RivalGameState): RivalRole {
   const frames = state.p2Recording;
   if (frames.length === 0) return 'RUNNER';
 
-  // If bot spent >= 40 ticks on Plate B and has no active Hacker echo yet -> HACKER
-  const plateB = state.plates[1];
+  const plateB = state.plates[1] ?? state.plates[0];
   let plateTicks = 0;
   let carriedTicks = 0;
   let leftHalfTicks = 0;
+  let nearOwnStashTicks = 0;
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
     if (
@@ -763,15 +892,38 @@ export function chooseBotEchoDuty(state: RivalGameState): RivalRole {
     }
     if (f.hasGold) carriedTicks++;
     if (f.x < 460) leftHalfTicks++;
+    if (f.x > 800 && Math.abs(f.y - 270) < 85) nearOwnStashTicks++;
   }
 
   const hasHacker = state.p2Echoes.some((e) => e.role === 'HACKER');
   if (!hasHacker && plateTicks >= 35) return 'HACKER';
+  if (
+    state.botDifficulty === 'MASTERMIND' &&
+    state.p2Score >= state.p1Score + 2 &&
+    nearOwnStashTicks >= 45 &&
+    !isStashShieldedByHacker(state, 'P2')
+  ) {
+    return 'HACKER';
+  }
   if (carriedTicks >= 20) return 'RUNNER';
   if (leftHalfTicks >= 60 && !state.p2Echoes.some((e) => e.role === 'GUARD')) {
     return 'GUARD';
   }
   return 'RUNNER';
+}
+
+function applyBanterFromEvents(
+  state: RivalGameState,
+  events: RivalSimEvent[]
+): void {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const banter = resolveRivalBanter(state, events[i]);
+    if (banter) {
+      state.liveBanter = banter;
+      state.liveBanterTimer = 3.2;
+      break;
+    }
+  }
 }
 
 /**
@@ -786,6 +938,8 @@ export function commitEchoDutiesAndStartNextLoop(
   if (!state.awaitingDutyAssignment || state.matchEnded) return [];
 
   const events: RivalSimEvent[] = [];
+  const arenaId: RivalArenaId = state.arenaId ?? 'BULLION_HALL';
+  const arena = RIVAL_ARENAS[arenaId] ?? RIVAL_ARENAS.BULLION_HALL;
 
   // Drop any still-carried gold from players/echoes cleanly back to floor before next loop
   if (state.p1.carriedGoldId) {
@@ -813,8 +967,8 @@ export function commitEchoDutiesAndStartNextLoop(
       team: 'P1',
       role: p1Role,
       frames: state.p1Recording,
-      x: P1_SPAWN.x,
-      y: P1_SPAWN.y,
+      x: arena.p1Spawn.x,
+      y: arena.p1Spawn.y,
       facing: 0,
       carriedGoldId: null,
       stunTimer: 0,
@@ -834,8 +988,8 @@ export function commitEchoDutiesAndStartNextLoop(
       team: 'P2',
       role: p2Role,
       frames: state.p2Recording,
-      x: P2_SPAWN.x,
-      y: P2_SPAWN.y,
+      x: arena.p2Spawn.x,
+      y: arena.p2Spawn.y,
       facing: Math.PI,
       carriedGoldId: null,
       stunTimer: 0,
@@ -854,55 +1008,148 @@ export function commitEchoDutiesAndStartNextLoop(
   state.awaitingDutyAssignment = false;
   state.p1Recording = [];
   state.p2Recording = [];
-  state.p1 = createRivalPlayer('P1');
-  state.p2 = createRivalPlayer('P2');
+  state.p1 = createRivalPlayer('P1', arenaId);
+  state.p2 = createRivalPlayer('P2', arenaId);
   state.activePlateIds.clear();
   for (const g of state.gates) {
     state.gateOpenProgress[g.id] = 0;
   }
   state.rewindFlashTimer = 0.25;
 
-  // Loop 6 Finale: Spawn the 3-point Golden Crown in the center of the Vault + 2nd sweeping laser!
-  if (state.loopNumber === RIVAL_TOTAL_LOOPS) {
+  // Dynamic Mid-Match Escalation Events
+  if (state.loopNumber === 3) {
+    // Loop 3: Spawn 2-Point Diamond Briefcase + replenish 2 vault gold bars if vault is low
+    const hasDiamond = state.goldItems.some((g) => g.isDiamond);
+    if (!hasDiamond) {
+      state.goldItems.push({
+        id: 'diamond-case',
+        x: arena.diamondDropCoord.x,
+        y: arena.diamondDropCoord.y,
+        value: 2,
+        isCrown: false,
+        isDiamond: true,
+        location: 'VAULT',
+        carrierId: null,
+      });
+    }
+    const vaultRemaining = state.goldItems.filter(
+      (g) => g.location === 'VAULT' && !g.isDiamond && !g.isCrown
+    ).length;
+    if (vaultRemaining < 3) {
+      for (let i = 0; i < 2; i++) {
+        const pt = arena.vaultGoldCoords[i % arena.vaultGoldCoords.length];
+        state.goldItems.push({
+          id: `replenish-l3-${i}-${state.nextEchoSeq++}`,
+          x: pt.x,
+          y: pt.y,
+          value: 1,
+          isCrown: false,
+          isDiamond: false,
+          location: 'VAULT',
+          carrierId: null,
+        });
+      }
+    }
+    spawnRivalParticles(
+      state,
+      arena.diamondDropCoord.x,
+      arena.diamondDropCoord.y,
+      24,
+      '#38BDF8',
+      50,
+      200,
+      2.5,
+      5
+    );
+    state.bannerText = 'LOOP 3/6 · 2-PT DIAMOND BRIEFCASE DROPPED!';
+    state.bannerTimer = 2.4;
+    events.push({
+      type: 'DIAMOND_SPAWN',
+      x: arena.diamondDropCoord.x,
+      y: arena.diamondDropCoord.y,
+    });
+  } else if (state.loopNumber === 4 || state.loopNumber === 5) {
+    // Loops 4 & 5: Spawn 2 lateral corridor gold bars + 20% Laser Overdrive
+    arena.corridorDropCoords.forEach((pt, idx) => {
+      state.goldItems.push({
+        id: `corridor-l${state.loopNumber}-${idx}-${state.nextEchoSeq++}`,
+        x: pt.x,
+        y: pt.y,
+        value: 1,
+        isCrown: false,
+        isDiamond: false,
+        location: 'FLOOR',
+        carrierId: null,
+      });
+      spawnRivalParticles(state, pt.x, pt.y, 14, '#FFD166', 40, 140, 2, 4);
+    });
+    state.bannerText = `LOOP ${state.loopNumber}/6 · CORRIDOR BULLION + LASER OVERDRIVE!`;
+    state.bannerTimer = 2.2;
+    events.push({ type: 'CORRIDOR_DROP' });
+  } else if (state.loopNumber === RIVAL_TOTAL_LOOPS) {
+    // Loop 6 Finale: Spawn the 3-point Golden Crown + 2nd sweeping laser!
     const hasCrown = state.goldItems.some((g) => g.isCrown);
     if (!hasCrown) {
       state.goldItems.push({
         id: 'golden-crown',
-        x: 480,
-        y: 270,
+        x: arena.crownSpawnCoord.x,
+        y: arena.crownSpawnCoord.y,
         value: 3,
         isCrown: true,
+        isDiamond: false,
         location: 'VAULT',
         carrierId: null,
       });
-      spawnRivalParticles(state, 480, 270, 28, '#FFD166', 55, 220, 3, 5.5);
+      spawnRivalParticles(
+        state,
+        arena.crownSpawnCoord.x,
+        arena.crownSpawnCoord.y,
+        28,
+        '#FFD166',
+        55,
+        220,
+        3,
+        5.5
+      );
       state.bannerText = 'FINAL LOOP 6/6 · 3-PT GOLDEN CROWN + DUAL LASERS!';
       state.bannerTimer = 2.6;
-      events.push({ type: 'CROWN_SPAWN', x: 480, y: 270 });
+      events.push({
+        type: 'CROWN_SPAWN',
+        x: arena.crownSpawnCoord.x,
+        y: arena.crownSpawnCoord.y,
+      });
     }
   } else {
     state.bannerText = `LOOP ${state.loopNumber} OF ${RIVAL_TOTAL_LOOPS} · ECHOES DEPLOYED`;
     state.bannerTimer = 1.6;
   }
 
+  applyBanterFromEvents(state, events);
   return events;
 }
 
 /** Advance Rival Heist simulation by exactly 1 fixed tick (1/60s) */
 export function stepRivalSimulation(
   state: RivalGameState,
-  p1Input: InputState,
-  p2Input: InputState
+  p1Input: RivalInputState,
+  p2Input: RivalInputState
 ): RivalSimEvent[] {
   const events: RivalSimEvent[] = [];
+  const arenaId: RivalArenaId = state.arenaId ?? 'BULLION_HALL';
+  const arena = RIVAL_ARENAS[arenaId] ?? RIVAL_ARENAS.BULLION_HALL;
 
   // Tick visual effects
-  if (state.shakeTimer > 0) state.shakeTimer = Math.max(0, state.shakeTimer - FIXED_DT);
+  if (state.shakeTimer > 0)
+    state.shakeTimer = Math.max(0, state.shakeTimer - FIXED_DT);
   if (state.rewindFlashTimer > 0)
     state.rewindFlashTimer = Math.max(0, state.rewindFlashTimer - FIXED_DT);
   if (state.bannerTimer > 0) {
     state.bannerTimer = Math.max(0, state.bannerTimer - FIXED_DT);
     if (state.bannerTimer === 0) state.bannerText = null;
+  }
+  if ((state.liveBanterTimer ?? 0) > 0) {
+    state.liveBanterTimer = Math.max(0, (state.liveBanterTimer ?? 0) - FIXED_DT);
+    if (state.liveBanterTimer === 0) state.liveBanter = null;
   }
   if (state.p1.hitFlashTimer > 0)
     state.p1.hitFlashTimer = Math.max(0, state.p1.hitFlashTimer - FIXED_DT);
@@ -971,7 +1218,7 @@ export function stepRivalSimulation(
 
     if (!pressed) {
       for (const echo of allEchoes) {
-        if (echo.role !== 'HACKER') continue;
+        if (echo.role !== 'HACKER' || echo.stunTimer > 0) continue;
         if (
           circleIntersectsRect(
             echo.x,
@@ -1028,7 +1275,7 @@ export function stepRivalSimulation(
       cur < target ? Math.min(1, cur + rate) : Math.max(0, cur - rate);
   }
 
-  // 4. Move P1 and P2 (or AI Bot for P2)
+  // 4. Move P1 and P2 (or AI Bot for P2) including Chrono-Dash burst
   const resolvedP2Input = state.vsBot ? computeBotInput(state) : p2Input;
   moveRivalPlayer(state, state.p1, p1Input);
   moveRivalPlayer(state, state.p2, resolvedP2Input);
@@ -1047,8 +1294,91 @@ export function stepRivalSimulation(
     hasGold: Boolean(state.p2.carriedGoldId),
   });
 
-  // 5. GUARD Echo Stun Checks (1.2s stun + knock carried gold onto floor)
-  const stunDistSq = (PLAYER_RADIUS * 2.05) ** 2;
+  // 4b. Chrono-Dash Shoulder Tackle checks (live player dashing into rival player or rival RUNNER echo)
+  const tackleDistSq = (PLAYER_RADIUS * 2.15) ** 2;
+  const checkDashTackle = (
+    attacker: RivalPlayerState,
+    defender: RivalPlayerState,
+    defenderEchoes: RivalEcho[]
+  ) => {
+    if ((attacker.dashTimer ?? 0) <= 0) return;
+
+    // Vs rival live player
+    if (defender.stunTimer <= 0 && defender.stunImmunityTimer <= 0) {
+      const dx = attacker.x - defender.x;
+      const dy = attacker.y - defender.y;
+      if (dx * dx + dy * dy <= tackleDistSq) {
+        defender.stunTimer = RIVAL_TACKLE_STUN_SECONDS;
+        defender.hitFlashTimer = 0.25;
+        if (defender.carriedGoldId) {
+          dropCarriedGold(state, defender.carriedGoldId, defender.x, defender.y);
+          defender.carriedGoldId = null;
+        }
+        if (attacker.team === 'P1') state.p1Tackles = (state.p1Tackles ?? 0) + 1;
+        else state.p2Tackles = (state.p2Tackles ?? 0) + 1;
+        state.shakeTimer = 0.22;
+        state.shakeIntensity = 7;
+        spawnRivalParticles(
+          state,
+          defender.x,
+          defender.y,
+          18,
+          attacker.team === 'P1' ? '#E63946' : '#38BDF8',
+          60,
+          200
+        );
+        events.push({
+          type: 'DASH_TACKLE',
+          team: attacker.team,
+          x: defender.x,
+          y: defender.y,
+        });
+      }
+    }
+
+    // Vs rival RUNNER echoes
+    for (const targetEcho of defenderEchoes) {
+      if (targetEcho.role !== 'RUNNER') continue;
+      if (targetEcho.stunTimer > 0 || targetEcho.stunImmunityTimer > 0) continue;
+      const dx = attacker.x - targetEcho.x;
+      const dy = attacker.y - targetEcho.y;
+      if (dx * dx + dy * dy <= tackleDistSq) {
+        targetEcho.stunTimer = RIVAL_TACKLE_STUN_SECONDS;
+        if (targetEcho.carriedGoldId) {
+          dropCarriedGold(
+            state,
+            targetEcho.carriedGoldId,
+            targetEcho.x,
+            targetEcho.y
+          );
+          targetEcho.carriedGoldId = null;
+        }
+        if (attacker.team === 'P1') state.p1Tackles = (state.p1Tackles ?? 0) + 1;
+        else state.p2Tackles = (state.p2Tackles ?? 0) + 1;
+        spawnRivalParticles(
+          state,
+          targetEcho.x,
+          targetEcho.y,
+          14,
+          '#F8FAFC',
+          50,
+          170
+        );
+        events.push({
+          type: 'DASH_TACKLE',
+          team: attacker.team,
+          x: targetEcho.x,
+          y: targetEcho.y,
+        });
+      }
+    }
+  };
+
+  checkDashTackle(state.p1, state.p2, state.p2Echoes);
+  checkDashTackle(state.p2, state.p1, state.p1Echoes);
+
+  // 5. GUARD Echo Stun Checks (34px threat radius -> 1.2s stun + knock carried gold onto floor)
+  const stunDistSq = RIVAL_GUARD_THREAT_RADIUS * RIVAL_GUARD_THREAT_RADIUS;
   const checkGuardStuns = (
     guards: RivalEcho[],
     rivalPlayer: RivalPlayerState,
@@ -1138,7 +1468,31 @@ export function stepRivalSimulation(
   checkGuardStuns(state.p1Echoes, state.p2, state.p2Echoes, 'P1');
   checkGuardStuns(state.p2Echoes, state.p1, state.p1Echoes, 'P2');
 
-  // 6. Gold pickup, rival stash stealing, and banking for players & RUNNER echoes
+  // 6. Enforce Laser Gate & Sweeping Laser Security on RUNNER Echoes
+  const laserSegments = getActiveRivalLaserSegments(
+    state.loopNumber,
+    state.tick,
+    arenaId
+  );
+  for (const echo of allEchoes) {
+    if (echo.role !== 'RUNNER' || echo.stunTimer > 0) continue;
+    if (checkLaserHitAtPoint(state, echo.x, echo.y, laserSegments)) {
+      if (echo.carriedGoldId) {
+        dropCarriedGold(state, echo.carriedGoldId, echo.x, echo.y);
+        echo.carriedGoldId = null;
+      }
+      echo.stunTimer = RIVAL_ECHO_GATE_STUN_SECONDS;
+      spawnRivalParticles(state, echo.x, echo.y, 14, '#EF4444', 50, 170);
+      events.push({
+        type: 'ECHO_ZAPPED',
+        team: echo.team,
+        x: echo.x,
+        y: echo.y,
+      });
+    }
+  }
+
+  // 7. Gold pickup, rival stash stealing, and banking for players & RUNNER echoes
   if (state.p1.stunTimer <= 0) {
     tryGrabOrBankGold(
       state,
@@ -1196,21 +1550,21 @@ export function stepRivalSimulation(
     );
   }
 
-  // 7. Laser hazards for live players (zap drops carried gold & resets that player to spawn)
-  const laserSegments = getActiveRivalLaserSegments(state.loopNumber, state.tick);
+  // 8. Laser hazards for live players (zap drops carried gold & resets that player to spawn)
   for (const player of [state.p1, state.p2]) {
     if (player.stunTimer > 0) continue;
-    if (checkLaserHitForPlayer(state, player, laserSegments)) {
+    if (checkLaserHitAtPoint(state, player.x, player.y, laserSegments)) {
       const hitX = player.x;
       const hitY = player.y;
       if (player.carriedGoldId) {
         dropCarriedGold(state, player.carriedGoldId, hitX, hitY);
         player.carriedGoldId = null;
       }
-      const spawn = player.team === 'P1' ? P1_SPAWN : P2_SPAWN;
+      const spawn = player.team === 'P1' ? arena.p1Spawn : arena.p2Spawn;
       player.x = spawn.x;
       player.y = spawn.y;
       player.stunTimer = 0.55;
+      player.dashTimer = 0;
       player.hitFlashTimer = 0.28;
       state.shakeTimer = 0.28;
       state.shakeIntensity = 7;
@@ -1219,7 +1573,7 @@ export function stepRivalSimulation(
     }
   }
 
-  // 8. Advance loop clock (600 ticks = 10.00s)
+  // 9. Advance loop clock (600 ticks = 10.00s)
   state.tick += 1;
 
   if (state.tick >= LOOP_TICKS) {
@@ -1236,6 +1590,7 @@ export function stepRivalSimulation(
     events.push({ type: 'TICK_SECOND' });
   }
 
+  applyBanterFromEvents(state, events);
   return events;
 }
 
@@ -1257,7 +1612,11 @@ export function buildRivalStatsSnapshot(
     p2Stuns: state.p2Stuns,
     p1EchoesDeployed: state.p1EchoesDeployed,
     p2EchoesDeployed: state.p2EchoesDeployed,
+    p1Tackles: state.p1Tackles ?? 0,
+    p2Tackles: state.p2Tackles ?? 0,
     winner,
     vsBot: state.vsBot,
+    arenaId: state.arenaId ?? 'BULLION_HALL',
+    botDifficulty: state.botDifficulty ?? 'TACTICIAN',
   };
 }

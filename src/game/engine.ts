@@ -6,8 +6,10 @@ import {
   FREEZE_FRAME_DURATION,
   GameState,
   Gate,
+  GoldCaseDef,
   InputState,
   LaserSegment,
+  LevelDef,
   LOOP_TICKS,
   MAX_ECHOES,
   MIN_MANUAL_REWIND_TICKS,
@@ -72,6 +74,16 @@ export function spawnParticles(
   }
 }
 
+export function getLevelGoldCases(level: LevelDef): GoldCaseDef[] {
+  if (level.goldCases && level.goldCases.length > 0) {
+    return level.goldCases;
+  }
+  if (level.goldCase) {
+    return [level.goldCase];
+  }
+  return [];
+}
+
 export function createInitialGameState(
   levelIndex = 0,
   cumulative?: {
@@ -107,6 +119,8 @@ export function createInitialGameState(
     activePlateIds: new Set<string>(),
     gateOpenProgress,
     goldCollected: false,
+    collectedGoldIds: new Set<number>(),
+    lastRadioEvent: null,
     shakeTimer: 0,
     shakeIntensity: 0,
     hitFlashTimer: 0,
@@ -263,6 +277,11 @@ function resetLoopToStart(state: GameState): void {
   state.player.squashX = 1.15;
   state.player.squashY = 0.85;
   state.goldCollected = false;
+  if (!state.collectedGoldIds) {
+    state.collectedGoldIds = new Set<number>();
+  } else {
+    state.collectedGoldIds.clear();
+  }
   state.activePlateIds.clear();
   for (const gate of state.level.gates) {
     state.gateOpenProgress[gate.id] = 0;
@@ -553,19 +572,28 @@ export function stepSimulation(
     hasGold: state.player.hasGold,
   });
 
-  // 5. Check Gold Case pickup (Chapter 4)
-  if (state.level.goldCase && !state.goldCollected) {
-    const gc = state.level.goldCase;
-    const distSq =
-      (state.player.x - gc.x) ** 2 + (state.player.y - gc.y) ** 2;
-    const hitR = PLAYER_RADIUS + gc.radius;
-    if (distSq <= hitR * hitR) {
-      state.goldCollected = true;
-      state.player.hasGold = true;
-      state.player.squashX = 1.2;
-      state.player.squashY = 0.82;
-      spawnParticles(state, gc.x, gc.y, 18, '#FFD166', 50, 175, 2.5, 5);
-      events.push({ type: 'GOLD_PICKUP', x: gc.x, y: gc.y });
+  // 5. Check Gold Case pickup(s) (single or multi-gold chapters)
+  const goldCases = getLevelGoldCases(state.level);
+  if (goldCases.length > 0 && !state.goldCollected) {
+    if (!state.collectedGoldIds) {
+      state.collectedGoldIds = new Set<number>();
+    }
+    for (let idx = 0; idx < goldCases.length; idx++) {
+      if (state.collectedGoldIds.has(idx)) continue;
+      const gc = goldCases[idx];
+      const distSq =
+        (state.player.x - gc.x) ** 2 + (state.player.y - gc.y) ** 2;
+      const hitR = PLAYER_RADIUS + gc.radius;
+      if (distSq <= hitR * hitR) {
+        state.collectedGoldIds.add(idx);
+        state.player.hasGold = true;
+        state.goldCollected = state.collectedGoldIds.size >= goldCases.length;
+        state.player.squashX = 1.2;
+        state.player.squashY = 0.82;
+        state.lastRadioEvent = 'GOLD_PICKUP';
+        spawnParticles(state, gc.x, gc.y, 18, '#FFD166', 50, 175, 2.5, 5);
+        events.push({ type: 'GOLD_PICKUP', x: gc.x, y: gc.y });
+      }
     }
   }
 
@@ -627,6 +655,7 @@ export function stepSimulation(
     state.hitstopTimer = 0.05;
     state.loopNumber += 1;
     state.totalLoopsUsed += 1;
+    state.lastRadioEvent = 'LASER_HIT';
     resetLoopToStart(state);
     events.push({ type: 'LASER_HIT', x: hitX, y: hitY });
     return events;
@@ -708,8 +737,8 @@ export function getRemainingSeconds(tick: number): number {
 }
 
 export function computeHeistRank(totalLoopsUsed: number): 'S' | 'A' | 'B' {
-  if (totalLoopsUsed <= 10) return 'S';
-  if (totalLoopsUsed <= 15) return 'A';
+  if (totalLoopsUsed <= 18) return 'S';
+  if (totalLoopsUsed <= 24) return 'A';
   return 'B';
 }
 

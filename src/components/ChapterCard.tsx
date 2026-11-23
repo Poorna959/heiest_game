@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { LEVELS } from '../game/levels';
 import { LevelDef } from '../types';
 
 interface ChapterCardProps {
@@ -49,7 +50,7 @@ export const ChapterCard: React.FC<ChapterCardProps> = ({
       {/* Chapter typography lockup */}
       <div className="relative z-10 flex flex-col items-center px-6 text-center">
         <div className="mb-2 font-mono-timer text-sm font-bold tracking-[0.34em] text-[#07090D]">
-          CHAPTER {level.chapter} OF 5
+          CHAPTER {level.chapter} OF {LEVELS.length}
         </div>
 
         <h1 className="font-display text-6xl font-black tracking-[0.08em] text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.45)] md:text-7xl">

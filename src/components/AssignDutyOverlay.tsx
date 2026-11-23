@@ -25,7 +25,7 @@ const ROLES: {
     title: 'GUARD',
     p1Key: '1',
     p2Key: 'J',
-    desc: 'Patrols path · Stuns rival or Runners 1.2s & knocks gold loose',
+    desc: 'Patrols path · 34px threat ring stuns rival/Runners 1.2s & drops gold',
     Icon: Shield,
   },
   {
@@ -33,7 +33,7 @@ const ROLES: {
     title: 'HACKER',
     p1Key: '2',
     p2Key: 'K',
-    desc: 'Activates biometric plates to open linked vault laser gates',
+    desc: 'Unlocks plates · 55px ECM slows enemies 25% & shields own stash',
     Icon: Terminal,
   },
   {
@@ -41,7 +41,7 @@ const ROLES: {
     title: 'RUNNER',
     p1Key: '3',
     p2Key: 'L',
-    desc: 'Replays at 1.2x speed · Auto-loots vault, floor & rival stash',
+    desc: '1.2x ping-pong patrol · Auto-loots vault & stash (blocked by closed gates)',
     Icon: Zap,
   },
 ];
@@ -73,8 +73,12 @@ export const AssignDutyOverlay: React.FC<AssignDutyOverlayProps> = ({
             <div className="font-mono-timer text-xs font-bold tracking-[0.22em] text-[#FFD166]">
               LOOP {completedLoop} COMPLETE · PREPARING LOOP {nextLoop} OF{' '}
               {RIVAL_TOTAL_LOOPS}
-              {nextLoop === RIVAL_TOTAL_LOOPS
-                ? ' (GOLDEN CROWN + 2 LASERS)'
+              {nextLoop === 3
+                ? ' (2-PT DIAMOND BRIEFCASE)'
+                : nextLoop === 4 || nextLoop === 5
+                ? ' (CORRIDOR DROPS + LASER OVERDRIVE)'
+                : nextLoop === RIVAL_TOTAL_LOOPS
+                ? ' (3-PT GOLDEN CROWN + DUAL LASERS)'
                 : ''}
             </div>
             <h2 className="mt-1 font-display text-3xl font-black tracking-[0.06em] text-white">

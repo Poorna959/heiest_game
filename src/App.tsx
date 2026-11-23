@@ -9,12 +9,17 @@ import {
   buildRunStatsSnapshot,
   clearAllEchoes,
   createInitialGameState,
+  getLevelGoldCases,
   getRemainingSeconds,
   stepSimulation,
   triggerManualRewind,
 } from './game/engine';
 import { LEVELS } from './game/levels';
 import { renderGame } from './game/renderer';
+import {
+  resolveStoryRadioTransmission,
+  SPEAKER_PROFILES,
+} from './game/scriptEngine';
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
@@ -23,6 +28,8 @@ import {
   GameState,
   InputState,
   MAX_ECHOES,
+  RivalArenaId,
+  RivalBotDifficulty,
   RunStatsSnapshot,
   ScreenPhase,
   SimEvent,
@@ -61,11 +68,19 @@ interface HudSnapshot {
   urgent: boolean;
   requiresGold: boolean;
   goldCollected: boolean;
+  goldCount: number;
+  goldTotal: number;
+  radioTag: string;
+  radioColor: string;
+  radioBlipFreq: number;
   radioText: string;
 }
 
 function extractHudSnapshot(state: GameState): HudSnapshot {
   const remaining = getRemainingSeconds(state.tick);
+  const goldCases = getLevelGoldCases(state.level);
+  const tx = resolveStoryRadioTransmission(state, state.lastRadioEvent ?? null);
+  const profile = SPEAKER_PROFILES[tx.speaker];
   return {
     chapter: state.level.chapter,
     title: state.level.title,
@@ -76,10 +91,12 @@ function extractHudSnapshot(state: GameState): HudSnapshot {
     urgent: remaining < 3.0 && !state.freezeFrameActive,
     requiresGold: Boolean(state.level.requiresGold),
     goldCollected: state.goldCollected,
-    radioText:
-      state.loopNumber >= 3 && state.level.secondaryRadioLine
-        ? state.level.secondaryRadioLine
-        : state.level.radioLine,
+    goldCount: state.collectedGoldIds?.size ?? (state.goldCollected ? 1 : 0),
+    goldTotal: goldCases.length,
+    radioTag: tx.tag,
+    radioColor: tx.color,
+    radioBlipFreq: profile.blipFreq,
+    radioText: tx.text,
   };
 }
 
@@ -87,6 +104,9 @@ export default function App() {
   const boot = useRef(parseBootParams());
   const [gameMode, setGameMode] = useState<GameMode>(boot.current.mode);
   const [rivalVsBot, setRivalVsBot] = useState<boolean>(boot.current.vsBot);
+  const [rivalArenaId, setRivalArenaId] = useState<RivalArenaId>('BULLION_HALL');
+  const [rivalBotDifficulty, setRivalBotDifficulty] =
+    useState<RivalBotDifficulty>('TACTICIAN');
   const [phase, setPhase] = useState<ScreenPhase>(
     boot.current.autostart ? 'PLAYING' : 'TITLE'
   );
@@ -131,10 +151,11 @@ export default function App() {
     document.body.dataset.echoes = String(hud.echoCount);
   }, [gameMode, phase, hud.chapter, hud.loopNumber, hud.echoCount]);
 
-  // Typewriter animation for The Architect's radio line
+  // Typewriter animation for multi-speaker radio comms
   useEffect(() => {
     if (phase !== 'PLAYING') return;
     const fullText = hud.radioText;
+    const freq = hud.radioBlipFreq;
     setTypedRadio('');
     let idx = 0;
 
@@ -142,7 +163,7 @@ export default function App() {
       idx += 1;
       setTypedRadio(fullText.slice(0, idx));
       if (idx % 3 === 0 && fullText[idx - 1] !== ' ') {
-        soundEngine.playRadioBlip();
+        soundEngine.playRadioBlip(freq);
       }
       if (idx >= fullText.length) {
         window.clearInterval(interval);
@@ -150,7 +171,7 @@ export default function App() {
     }, 22);
 
     return () => window.clearInterval(interval);
-  }, [hud.radioText, hud.chapter, phase]);
+  }, [hud.radioText, hud.radioBlipFreq, hud.chapter, phase]);
 
   const syncHudFromState = useCallback(() => {
     const next = extractHudSnapshot(gameStateRef.current);
@@ -161,6 +182,8 @@ export default function App() {
         prev.echoCount === next.echoCount &&
         prev.urgent === next.urgent &&
         prev.goldCollected === next.goldCollected &&
+        prev.goldCount === next.goldCount &&
+        prev.radioTag === next.radioTag &&
         prev.radioText === next.radioText
       ) {
         return prev;
@@ -513,6 +536,10 @@ export default function App() {
         onStartRival={handleStartRival}
         rivalVsBot={rivalVsBot}
         onToggleRivalVsBot={() => setRivalVsBot((v) => !v)}
+        rivalArenaId={rivalArenaId}
+        onSelectRivalArena={setRivalArenaId}
+        rivalBotDifficulty={rivalBotDifficulty}
+        onSelectRivalBotDifficulty={setRivalBotDifficulty}
         muted={muted}
         onToggleMute={handleToggleMute}
       />
@@ -523,6 +550,8 @@ export default function App() {
     return (
       <RivalHeistArena
         initialVsBot={rivalVsBot}
+        initialArenaId={rivalArenaId}
+        initialBotDifficulty={rivalBotDifficulty}
         muted={muted}
         onToggleMute={handleToggleMute}
         onReturnTitle={handleReturnToTitle}
@@ -536,6 +565,7 @@ export default function App() {
         stats={endingStats}
         onReplayHeist={() => startAtChapter(0, true, true)}
         onJumpToChapter={(idx) => startAtChapter(idx, true, true)}
+        onLaunchRivalVsOslo={() => handleStartRival(true)}
       />
     );
   }
@@ -558,7 +588,9 @@ export default function App() {
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-[11px] font-mono-timer tracking-[0.14em] text-[#94A3B8]">
-              <span className="font-bold text-[#F8FAFC]">[THE ARCHITECT]</span>
+              <span className="font-bold" style={{ color: hud.radioColor }}>
+                {hud.radioTag}
+              </span>
               <span aria-hidden="true">·</span>
               <span>
                 CH {hud.chapter}: {hud.planName}
@@ -568,10 +600,16 @@ export default function App() {
                   <span aria-hidden="true">·</span>
                   <span
                     className={
-                      hud.goldCollected ? 'text-[#FFD166] font-bold' : 'text-[#94A3B8]'
+                      hud.goldCollected
+                        ? 'text-[#FFD166] font-bold'
+                        : 'text-[#94A3B8]'
                     }
                   >
-                    {hud.goldCollected ? 'BULLION SECURED' : 'TARGET: GOLD CASE'}
+                    {hud.goldCollected
+                      ? 'BULLION SECURED'
+                      : hud.goldTotal > 1
+                      ? `BULLION ${hud.goldCount}/${hud.goldTotal}`
+                      : 'TARGET: GOLD CASE'}
                   </span>
                 </>
               )}
@@ -796,7 +834,7 @@ export default function App() {
               <div className="mb-2 font-mono-timer text-[11px] font-semibold tracking-[0.16em] text-[#94A3B8]">
                 JUMP TO CHAPTER
               </div>
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-7 gap-1.5">
                 {LEVELS.map((lvl, idx) => (
                   <button
                     key={lvl.chapter}

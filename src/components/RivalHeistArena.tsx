@@ -17,16 +17,20 @@ import {
   createInitialRivalState,
   stepRivalSimulation,
 } from '../game/rivalEngine';
+import { RIVAL_ARENA_LIST } from '../game/rivalMaps';
 import { renderRivalGame } from '../game/rivalRenderer';
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   FIXED_DT,
-  InputState,
+  RadioTransmission,
   RIVAL_ASSIGN_DURATION_SECONDS,
   RIVAL_MAX_ECHOES_PER_PLAYER,
   RIVAL_TOTAL_LOOPS,
+  RivalArenaId,
+  RivalBotDifficulty,
   RivalGameState,
+  RivalInputState,
   RivalPhase,
   RivalRole,
   RivalSimEvent,
@@ -37,6 +41,8 @@ import { RivalNewspaperEnding } from './RivalNewspaperEnding';
 
 interface RivalHeistArenaProps {
   initialVsBot: boolean;
+  initialArenaId: RivalArenaId;
+  initialBotDifficulty: RivalBotDifficulty;
   muted: boolean;
   onToggleMute: () => void;
   onReturnTitle: () => void;
@@ -50,6 +56,9 @@ interface RivalHudSnapshot {
   p2Roles: RivalRole[];
   urgent: boolean;
   vsBot: boolean;
+  arenaId: RivalArenaId;
+  botDifficulty: RivalBotDifficulty;
+  banter: RadioTransmission | null;
 }
 
 function extractRivalHud(state: RivalGameState): RivalHudSnapshot {
@@ -62,6 +71,9 @@ function extractRivalHud(state: RivalGameState): RivalHudSnapshot {
     p2Roles: state.p2Echoes.map((e) => e.role),
     urgent: rem < 3.0 && !state.awaitingDutyAssignment && !state.matchEnded,
     vsBot: state.vsBot,
+    arenaId: state.arenaId ?? 'BULLION_HALL',
+    botDifficulty: state.botDifficulty ?? 'TACTICIAN',
+    banter: state.liveBanter ?? null,
   };
 }
 
@@ -76,11 +88,15 @@ const EchoSlotIcon: React.FC<{ role: RivalRole; colorClass: string }> = ({
 
 export const RivalHeistArena: React.FC<RivalHeistArenaProps> = ({
   initialVsBot,
+  initialArenaId,
+  initialBotDifficulty,
   muted,
   onToggleMute,
   onReturnTitle,
 }) => {
-  const stateRef = useRef<RivalGameState>(createInitialRivalState(initialVsBot));
+  const stateRef = useRef<RivalGameState>(
+    createInitialRivalState(initialVsBot, initialArenaId, initialBotDifficulty)
+  );
   const [phase, setPhase] = useState<RivalPhase>('PLAYING');
   const phaseRef = useRef<RivalPhase>('PLAYING');
   phaseRef.current = phase;
@@ -133,6 +149,9 @@ export const RivalHeistArena: React.FC<RivalHeistArenaProps> = ({
         prev.p2Score === next.p2Score &&
         prev.urgent === next.urgent &&
         prev.vsBot === next.vsBot &&
+        prev.arenaId === next.arenaId &&
+        prev.botDifficulty === next.botDifficulty &&
+        prev.banter?.text === next.banter?.text &&
         prev.p1Roles.join(',') === next.p1Roles.join(',') &&
         prev.p2Roles.join(',') === next.p2Roles.join(',')
       ) {
@@ -169,8 +188,16 @@ export const RivalHeistArena: React.FC<RivalHeistArenaProps> = ({
         case 'GUARD_STUN':
           soundEngine.playChapterSlam();
           break;
+        case 'DASH_TACKLE':
+          soundEngine.playTackleHit();
+          break;
+        case 'ECHO_ZAPPED':
         case 'LASER_HIT':
           soundEngine.playLaserZap();
+          break;
+        case 'DIAMOND_SPAWN':
+        case 'CORRIDOR_DROP':
+          soundEngine.playGoldPickup();
           break;
         case 'LOOP_END':
           soundEngine.playLoopRewind();
@@ -214,13 +241,17 @@ export const RivalHeistArena: React.FC<RivalHeistArenaProps> = ({
   }, [playEventsAudio, syncHud]);
 
   const startNewMatch = useCallback(
-    (vsBot: boolean) => {
+    (
+      vsBot: boolean,
+      arenaId: RivalArenaId = stateRef.current.arenaId ?? 'BULLION_HALL',
+      botDifficulty: RivalBotDifficulty = stateRef.current.botDifficulty ?? 'TACTICIAN'
+    ) => {
       soundEngine.ensureUnlocked();
       if (document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }
       keysHeldRef.current.clear();
-      stateRef.current = createInitialRivalState(vsBot);
+      stateRef.current = createInitialRivalState(vsBot, arenaId, botDifficulty);
       p1ChoiceRef.current = null;
       p2ChoiceRef.current = null;
       setP1Choice(null);
@@ -303,10 +334,14 @@ export const RivalHeistArena: React.FC<RivalHeistArenaProps> = ({
       'KeyA',
       'KeyS',
       'KeyD',
+      'Space',
+      'ShiftLeft',
       'ArrowUp',
       'ArrowDown',
       'ArrowLeft',
       'ArrowRight',
+      'Enter',
+      'ShiftRight',
     ]);
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -315,6 +350,15 @@ export const RivalHeistArena: React.FC<RivalHeistArenaProps> = ({
       if (MOVE_KEYS.has(e.code)) {
         if (phaseRef.current === 'PLAYING') {
           e.preventDefault();
+          if (
+            !e.repeat &&
+            (e.code === 'Space' ||
+              e.code === 'ShiftLeft' ||
+              e.code === 'Enter' ||
+              e.code === 'ShiftRight')
+          ) {
+            soundEngine.playChronoDash();
+          }
           keysHeldRef.current.add(e.code);
         }
         return;
@@ -405,17 +449,19 @@ export const RivalHeistArena: React.FC<RivalHeistArenaProps> = ({
       if (curPhase === 'PLAYING') {
         accumulator += clampedDt;
         const keys = keysHeldRef.current;
-        const p1Input: InputState = {
+        const p1Input: RivalInputState = {
           up: keys.has('KeyW'),
           down: keys.has('KeyS'),
           left: keys.has('KeyA'),
           right: keys.has('KeyD'),
+          dash: keys.has('Space') || keys.has('ShiftLeft'),
         };
-        const p2Input: InputState = {
+        const p2Input: RivalInputState = {
           up: keys.has('ArrowUp'),
           down: keys.has('ArrowDown'),
           left: keys.has('ArrowLeft'),
           right: keys.has('ArrowRight'),
+          dash: keys.has('Enter') || keys.has('ShiftRight'),
         };
 
         let needsSync = false;
@@ -661,6 +707,21 @@ export const RivalHeistArena: React.FC<RivalHeistArenaProps> = ({
         </div>
       </header>
 
+      {/* Live PvP Radio Banter Strip */}
+      {hud.banter && (
+        <div className="z-20 flex shrink-0 items-center justify-center gap-2.5 border-b border-[#1E293B] bg-[#0B0E16] px-4 py-1 text-xs">
+          <span
+            className="font-mono-timer text-[11px] font-black tracking-[0.14em]"
+            style={{ color: hud.banter.color }}
+          >
+            {hud.banter.tag}
+          </span>
+          <span className="truncate font-medium text-[#E2E8F0]">
+            &ldquo;{hud.banter.text}&rdquo;
+          </span>
+        </div>
+      )}
+
       {/* Center Unobstructed Rival Canvas Viewport */}
       <main className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2">
         <div className="relative flex h-full w-full items-center justify-center">
@@ -677,13 +738,15 @@ export const RivalHeistArena: React.FC<RivalHeistArenaProps> = ({
       {/* Bottom Control Strip */}
       <footer className="z-20 flex h-[34px] shrink-0 items-center justify-between border-t border-[#1E293B] bg-[#0C1018] px-4 font-mono-timer text-xs text-[#94A3B8] md:px-6">
         <div className="truncate">
-          P1 Kyoto: WASD (1/2/3 Duty) <span aria-hidden="true"> · </span>
-          {hud.vsBot ? 'P2 Oslo: AI Bot Active' : 'P2 Oslo: Arrows (J/K/L Duty)'}
+          P1 Kyoto: WASD + Space Dash (1/2/3) <span aria-hidden="true"> · </span>
+          {hud.vsBot
+            ? `P2 Oslo: AI (${hud.botDifficulty})`
+            : 'P2 Oslo: Arrows + Enter Dash (J/K/L)'}
           <span aria-hidden="true"> · </span> M: Audio{' '}
           <span aria-hidden="true"> · </span> Esc: Pause
         </div>
         <div className="hidden shrink-0 text-[#64748B] sm:block">
-          STEAL RIVAL STASH · LOOP 6 CROWN = 3 PTS
+          L3 DIAMOND (2 PT) · L6 CROWN (3 PT) · HACKER SHIELDS STASH
         </div>
       </footer>
 
@@ -769,6 +832,31 @@ export const RivalHeistArena: React.FC<RivalHeistArenaProps> = ({
               >
                 RETURN TO TITLE
               </button>
+            </div>
+
+            <div className="mt-4 border-t border-[#1E293B] pt-3">
+              <div className="mb-1.5 font-mono-timer text-[10px] font-bold tracking-[0.16em] text-[#94A3B8]">
+                SWITCH ARENA
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {RIVAL_ARENA_LIST.map((arena) => (
+                  <button
+                    key={arena.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      startNewMatch(hud.vsBot, arena.id, hud.botDifficulty);
+                    }}
+                    className={`cursor-pointer border px-2 py-1.5 font-mono-timer text-[10px] font-bold transition-colors ${
+                      hud.arenaId === arena.id
+                        ? 'border-[#E63946] bg-[#E63946]/20 text-white'
+                        : 'border-[#334155] bg-[#141923] text-[#94A3B8] hover:text-white'
+                    }`}
+                  >
+                    {arena.name.split(' ')[0]}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

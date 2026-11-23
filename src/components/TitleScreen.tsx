@@ -1,21 +1,37 @@
 import React, { useEffect, useRef } from 'react';
-import { Bot, Users, Volume2, VolumeX } from 'lucide-react';
+import { Bot, Map, Users, Volume2, VolumeX } from 'lucide-react';
 import { renderTitleBlueprint } from '../game/renderer';
+import { RIVAL_ARENA_LIST } from '../game/rivalMaps';
+import { RivalArenaId, RivalBotDifficulty } from '../types';
 
 interface TitleScreenProps {
   onStartHeist: () => void;
   onStartRival: (vsBot: boolean) => void;
   rivalVsBot: boolean;
   onToggleRivalVsBot: () => void;
+  rivalArenaId: RivalArenaId;
+  onSelectRivalArena: (id: RivalArenaId) => void;
+  rivalBotDifficulty: RivalBotDifficulty;
+  onSelectRivalBotDifficulty: (diff: RivalBotDifficulty) => void;
   muted: boolean;
   onToggleMute: () => void;
 }
+
+const BOT_DIFFICULTIES: RivalBotDifficulty[] = [
+  'OPERATIVE',
+  'TACTICIAN',
+  'MASTERMIND',
+];
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStartHeist,
   onStartRival,
   rivalVsBot,
   onToggleRivalVsBot,
+  rivalArenaId,
+  onSelectRivalArena,
+  rivalBotDifficulty,
+  onSelectRivalBotDifficulty,
   muted,
   onToggleMute,
 }) => {
@@ -225,7 +241,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 role="switch"
@@ -245,8 +261,58 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 <span>VS AI BOT: {rivalVsBot ? 'ON (P2 OSLO)' : 'OFF (2P LOCAL)'}</span>
               </button>
 
-              <span className="text-xs font-mono-timer tracking-wider text-[#94A3B8]">
-                STORY: 5 CHAPTERS · RIVAL: 6 LOOPS
+              {rivalVsBot && (
+                <div className="flex items-center gap-1" role="group" aria-label="AI Bot Difficulty">
+                  {BOT_DIFFICULTIES.map((diff) => (
+                    <button
+                      key={diff}
+                      type="button"
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        onSelectRivalBotDifficulty(diff);
+                      }}
+                      className={`cursor-pointer border px-2.5 py-2 font-mono-timer text-[10px] font-bold tracking-[0.12em] transition-colors ${
+                        rivalBotDifficulty === diff
+                          ? 'border-[#FFD166] bg-[#FFD166]/20 text-[#FEF08A]'
+                          : 'border-[#334155] bg-[#111520] text-[#94A3B8] hover:border-[#64748B] hover:text-white'
+                      }`}
+                    >
+                      {diff}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Rival Arena Selector */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 font-mono-timer text-[11px] font-bold tracking-[0.12em] text-[#94A3B8]">
+                <Map className="h-3.5 w-3.5 text-[#FFD166]" />
+                ARENA:
+              </span>
+              {RIVAL_ARENA_LIST.map((arena) => {
+                const active = rivalArenaId === arena.id;
+                return (
+                  <button
+                    key={arena.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onSelectRivalArena(arena.id);
+                    }}
+                    title={arena.subtitle}
+                    className={`cursor-pointer border px-2.5 py-1.5 font-mono-timer text-[10px] font-bold tracking-[0.1em] transition-colors ${
+                      active
+                        ? 'border-[#E63946] bg-[#E63946]/20 text-white'
+                        : 'border-[#334155] bg-[#111520] text-[#94A3B8] hover:border-[#64748B] hover:text-white'
+                    }`}
+                  >
+                    {arena.name}
+                  </button>
+                );
+              })}
+              <span className="ml-1 text-xs font-mono-timer tracking-wider text-[#64748B]">
+                STORY: 7 CHAPTERS · RIVAL: 6 LOOPS
               </span>
             </div>
           </div>
@@ -256,8 +322,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-[#1E293B] pt-4 text-xs font-mono-timer tracking-wide text-[#94A3B8]">
           <div>
             Story: WASD / Arrows · R Rewind · C Clear{' '}
-            <span aria-hidden="true">|</span> Rival: P1 WASD (1/2/3) · P2 Arrows
-            (J/K/L) <span aria-hidden="true">·</span> M Audio
+            <span aria-hidden="true">|</span> Rival: P1 WASD + Space Dash (1/2/3) · P2 Arrows + Enter Dash (J/K/L){' '}
+            <span aria-hidden="true">·</span> M Audio
           </div>
           <div className="text-[#64748B]">KYOTO vs OSLO</div>
         </footer>

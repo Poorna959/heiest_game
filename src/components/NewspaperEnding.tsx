@@ -1,11 +1,13 @@
 import React from 'react';
 import { LEVELS } from '../game/levels';
+import { getStoryEndingEditorial } from '../game/scriptEngine';
 import { RunStatsSnapshot } from '../types';
 
 interface NewspaperEndingProps {
   stats: RunStatsSnapshot;
   onReplayHeist: () => void;
   onJumpToChapter: (levelIndex: number) => void;
+  onLaunchRivalVsOslo?: () => void;
 }
 
 function formatHeistTime(seconds: number): string {
@@ -21,7 +23,10 @@ export const NewspaperEnding: React.FC<NewspaperEndingProps> = ({
   stats,
   onReplayHeist,
   onJumpToChapter,
+  onLaunchRivalVsOslo,
 }) => {
+  const editorial = getStoryEndingEditorial(stats);
+
   return (
     <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[#0A0C10] p-4 md:p-6 select-none">
       <article className="relative flex max-h-full w-full max-w-[1040px] flex-col border-2 border-[#1A1A1A] bg-[#F2ECE1] px-7 py-5 text-[#141414] shadow-[0_24px_60px_rgba(0,0,0,0.75)]">
@@ -43,7 +48,7 @@ export const NewspaperEnding: React.FC<NewspaperEndingProps> = ({
               aria-hidden="true"
               className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 rotate-[-8deg] border-2 border-[#C81E2B] px-2.5 py-0.5 font-mono-timer text-xs font-black tracking-[0.22em] text-[#C81E2B]"
             >
-              CASE UNSOLVED
+              {editorial.stamp}
             </div>
           </div>
         </header>
@@ -51,11 +56,10 @@ export const NewspaperEnding: React.FC<NewspaperEndingProps> = ({
         {/* Main Front-Page Headline */}
         <section className="border-b border-[#1A1A1A]/30 py-3 text-center">
           <h2 className="font-broadsheet text-2xl font-black leading-tight tracking-tight text-[#111111] md:text-3xl">
-            ROYAL MINT ROBBED — POLICE SEALED IN WITH A GHOST
+            {editorial.headline}
           </h2>
           <p className="mt-1 text-xs font-mono-timer tracking-[0.14em] text-[#575148]">
-            BULLION VAULT EMPTIED IN TEN-SECOND BURSTS · SOLE SUSPECT VANISHES
-            BEHIND BLAST DOORS
+            {editorial.subhead}
           </p>
         </section>
 
@@ -160,14 +164,7 @@ export const NewspaperEnding: React.FC<NewspaperEndingProps> = ({
             </div>
 
             <div className="mt-3 font-broadsheet text-sm leading-relaxed text-[#26231F]">
-              <p>
-                <strong>MADRID —</strong> Tactical units breaching the Royal
-                Mint&apos;s inner bullion hall found the blast doors locked from
-                within and a lone figure in a crimson jumpsuit standing calmly
-                inside the glass override chamber. Seconds after officers forced
-                the seal, the figure flickered out of existence—leaving an empty
-                vault and no trace of the real thief.
-              </p>
+              <p>{editorial.leadParagraph}</p>
             </div>
           </div>
 
@@ -214,7 +211,7 @@ export const NewspaperEnding: React.FC<NewspaperEndingProps> = ({
                     MASTERMIND RANK
                   </div>
                   <div className="mt-0.5 font-mono-timer text-[10px] text-[#575148]">
-                    S ≤ 10 · A ≤ 15 · B 16+ LOOPS
+                    S ≤ 18 · A ≤ 24 · B 25+ LOOPS
                   </div>
                 </div>
                 <div
@@ -228,25 +225,38 @@ export const NewspaperEnding: React.FC<NewspaperEndingProps> = ({
 
             {/* Architect Sign-off */}
             <blockquote className="mt-3 border-t border-[#1A1A1A]/20 pt-2.5 font-broadsheet text-xs italic text-[#3F3A33]">
-              &ldquo;They brought forty officers to catch one ghost. Enjoy the
-              gold, Kyoto.&rdquo; — The Architect
+              {editorial.architectQuote}
             </blockquote>
           </div>
         </div>
 
         {/* Footer Action Bar */}
-        <footer className="flex flex-wrap items-center justify-between gap-4 border-t-2 border-[#1A1A1A] pt-3.5">
-          <button
-            type="button"
-            data-start="true"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onReplayHeist();
-            }}
-            className="cursor-pointer bg-[#C81E2B] px-6 py-2.5 font-mono-timer text-xs font-bold tracking-[0.18em] text-white transition-colors hover:bg-[#991B1B] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#141414] whitespace-nowrap shrink-0"
-          >
-            REPLAY HEIST
-          </button>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-[#1A1A1A] pt-3.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              data-start="true"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onReplayHeist();
+              }}
+              className="cursor-pointer bg-[#C81E2B] px-5 py-2.5 font-mono-timer text-xs font-bold tracking-[0.16em] text-white transition-colors hover:bg-[#991B1B] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#141414] whitespace-nowrap shrink-0"
+            >
+              REPLAY HEIST
+            </button>
+            {onLaunchRivalVsOslo && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onLaunchRivalVsOslo();
+                }}
+                className="cursor-pointer border-2 border-[#0284C7] bg-[#0B1624] px-4 py-2 font-mono-timer text-xs font-bold tracking-[0.14em] text-[#BAE6FD] transition-colors hover:bg-[#0284C7] hover:text-white whitespace-nowrap shrink-0"
+              >
+                FACE OSLO IN RIVAL HEIST →
+              </button>
+            )}
+          </div>
 
           <div className="flex items-center gap-2">
             <span className="mr-1 font-mono-timer text-[11px] font-bold tracking-[0.14em] text-[#4B463F]">

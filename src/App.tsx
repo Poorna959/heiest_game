@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pause, Play, RotateCcw, Trash2, Volume2, VolumeX } from 'lucide-react';
 import { ChapterCard } from './components/ChapterCard';
 import { NewspaperEnding } from './components/NewspaperEnding';
+import { RivalHeistArena } from './components/RivalHeistArena';
 import { TitleScreen } from './components/TitleScreen';
 import { soundEngine } from './game/audio';
 import {
@@ -18,6 +19,7 @@ import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   FIXED_DT,
+  GameMode,
   GameState,
   InputState,
   MAX_ECHOES,
@@ -26,18 +28,27 @@ import {
   SimEvent,
 } from './types';
 
-function parseBootParams(): { autostart: boolean; chapterIdx: number } {
+function parseBootParams(): {
+  autostart: boolean;
+  chapterIdx: number;
+  mode: GameMode;
+  vsBot: boolean;
+} {
   if (typeof window === 'undefined') {
-    return { autostart: false, chapterIdx: 0 };
+    return { autostart: false, chapterIdx: 0, mode: 'STORY', vsBot: true };
   }
   const params = new URLSearchParams(window.location.search);
-  const autostart = params.get('autostart') === '1';
+  const modeParam = params.get('mode');
+  const mode: GameMode = modeParam === 'rival' ? 'RIVAL' : 'STORY';
+  const botParam = params.get('bot');
+  const vsBot = botParam === '0' ? false : true;
+  const autostart = params.get('autostart') === '1' || mode === 'RIVAL';
   const chParam = Number(params.get('chapter'));
   const chapterIdx =
     Number.isFinite(chParam) && chParam >= 1 && chParam <= LEVELS.length
       ? chParam - 1
       : 0;
-  return { autostart, chapterIdx };
+  return { autostart, chapterIdx, mode, vsBot };
 }
 
 interface HudSnapshot {
@@ -74,6 +85,8 @@ function extractHudSnapshot(state: GameState): HudSnapshot {
 
 export default function App() {
   const boot = useRef(parseBootParams());
+  const [gameMode, setGameMode] = useState<GameMode>(boot.current.mode);
+  const [rivalVsBot, setRivalVsBot] = useState<boolean>(boot.current.vsBot);
   const [phase, setPhase] = useState<ScreenPhase>(
     boot.current.autostart ? 'PLAYING' : 'TITLE'
   );
@@ -85,6 +98,8 @@ export default function App() {
   );
   const phaseRef = useRef<ScreenPhase>(phase);
   phaseRef.current = phase;
+  const gameModeRef = useRef<GameMode>(gameMode);
+  gameModeRef.current = gameMode;
 
   const [hud, setHud] = useState<HudSnapshot>(() =>
     extractHudSnapshot(gameStateRef.current)
@@ -97,8 +112,9 @@ export default function App() {
   const lastUrgentRef = useRef<boolean>(false);
   const keysHeldRef = useRef<Set<string>>(new Set());
 
-  // Mirror state machine to document.body.dataset for reliable testability & focus hygiene
+  // Mirror Story Mode state machine to document.body.dataset (Rival Mode manages its own dataset)
   useEffect(() => {
+    if (gameMode === 'RIVAL' && phase !== 'TITLE') return;
     const bodyState =
       phase === 'TITLE'
         ? 'title'
@@ -108,11 +124,12 @@ export default function App() {
         ? 'gameover'
         : 'playing';
     document.body.dataset.state = bodyState;
+    document.body.dataset.mode = 'story';
     document.body.dataset.phase = phase.toLowerCase();
     document.body.dataset.chapter = String(hud.chapter);
     document.body.dataset.loop = String(hud.loopNumber);
     document.body.dataset.echoes = String(hud.echoCount);
-  }, [phase, hud.chapter, hud.loopNumber, hud.echoCount]);
+  }, [gameMode, phase, hud.chapter, hud.loopNumber, hud.echoCount]);
 
   // Typewriter animation for The Architect's radio line
   useEffect(() => {
@@ -233,8 +250,29 @@ export default function App() {
   );
 
   const handleStartHeist = useCallback(() => {
+    setGameMode('STORY');
+    gameModeRef.current = 'STORY';
     startAtChapter(0, true, true);
   }, [startAtChapter]);
+
+  const handleStartRival = useCallback((vsBot: boolean) => {
+    soundEngine.ensureUnlocked();
+    blurActiveElement();
+    keysHeldRef.current.clear();
+    setRivalVsBot(vsBot);
+    setGameMode('RIVAL');
+    gameModeRef.current = 'RIVAL';
+    phaseRef.current = 'PLAYING';
+    setPhase('PLAYING');
+  }, []);
+
+  const handleReturnToTitle = useCallback(() => {
+    keysHeldRef.current.clear();
+    setGameMode('STORY');
+    gameModeRef.current = 'STORY';
+    phaseRef.current = 'TITLE';
+    setPhase('TITLE');
+  }, []);
 
   const handleChapterCardComplete = useCallback(() => {
     blurActiveElement();
@@ -301,6 +339,7 @@ export default function App() {
     ]);
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (gameModeRef.current === 'RIVAL') return;
       soundEngine.ensureUnlocked();
 
       if (MOVEMENT_CODES.has(e.code)) {
@@ -380,7 +419,10 @@ export default function App() {
       const currentPhase = phaseRef.current;
       const state = gameStateRef.current;
 
-      if (currentPhase === 'PLAYING' || currentPhase === 'FREEZE_FRAME') {
+      if (
+        gameModeRef.current === 'STORY' &&
+        (currentPhase === 'PLAYING' || currentPhase === 'FREEZE_FRAME')
+      ) {
         accumulator += clampedDt;
 
         const keys = keysHeldRef.current;
@@ -441,9 +483,10 @@ export default function App() {
         accumulator = 0;
       }
 
-      // Render canvas whenever arena is mounted
+      // Render Story Mode canvas whenever Story arena is mounted
       const canvas = canvasRef.current;
       if (
+        gameModeRef.current === 'STORY' &&
         canvas &&
         (currentPhase === 'PLAYING' ||
           currentPhase === 'PAUSED' ||
@@ -467,8 +510,22 @@ export default function App() {
     return (
       <TitleScreen
         onStartHeist={handleStartHeist}
+        onStartRival={handleStartRival}
+        rivalVsBot={rivalVsBot}
+        onToggleRivalVsBot={() => setRivalVsBot((v) => !v)}
         muted={muted}
         onToggleMute={handleToggleMute}
+      />
+    );
+  }
+
+  if (gameMode === 'RIVAL') {
+    return (
+      <RivalHeistArena
+        initialVsBot={rivalVsBot}
+        muted={muted}
+        onToggleMute={handleToggleMute}
+        onReturnTitle={handleReturnToTitle}
       />
     );
   }

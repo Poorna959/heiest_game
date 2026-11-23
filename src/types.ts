@@ -205,3 +205,137 @@ export interface RunStatsSnapshot {
   totalHeistSeconds: number;
   rank: 'S' | 'A' | 'B';
 }
+
+// ============================================================================
+// RIVAL HEIST (2P / VS AI BOT) TYPES & CONSTANTS
+// ============================================================================
+
+export type GameMode = 'STORY' | 'RIVAL';
+export type RivalTeam = 'P1' | 'P2';
+export type RivalRole = 'GUARD' | 'HACKER' | 'RUNNER';
+export type RivalPhase = 'PLAYING' | 'ASSIGN_DUTY' | 'PAUSED' | 'ENDING';
+
+export const RIVAL_TOTAL_LOOPS = 6;
+export const RIVAL_MAX_ECHOES_PER_PLAYER = 4;
+export const RIVAL_CARRY_SPEED_MULT = 0.85; // -15% speed while carrying gold
+export const RIVAL_GUARD_STUN_SECONDS = 1.2;
+export const RIVAL_RUNNER_SPEED_MULT = 1.2;
+export const RIVAL_ASSIGN_DURATION_SECONDS = 3.0;
+
+export interface RivalStashDef {
+  team: RivalTeam;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface RivalGoldItem {
+  id: string;
+  x: number;
+  y: number;
+  value: 1 | 3;
+  isCrown: boolean;
+  location: 'VAULT' | 'FLOOR' | 'CARRIED' | 'BANKED';
+  carrierId: string | null; // 'P1', 'P2', or echo string id
+}
+
+export interface RivalPlayerState {
+  team: RivalTeam;
+  name: string;
+  x: number;
+  y: number;
+  facing: number;
+  carriedGoldId: string | null;
+  stunTimer: number;
+  stunImmunityTimer: number;
+  stealCooldown: number;
+  walkPhase: number;
+  squashX: number;
+  squashY: number;
+  hitFlashTimer: number;
+}
+
+export interface RivalEcho {
+  id: string;
+  team: RivalTeam;
+  role: RivalRole;
+  frames: RecordedFrame[];
+  x: number;
+  y: number;
+  facing: number;
+  carriedGoldId: string | null;
+  stunTimer: number;
+  stunImmunityTimer: number;
+  stealCooldown: number;
+}
+
+export interface RivalStatsSnapshot {
+  p1Score: number;
+  p2Score: number;
+  p1Stolen: number;
+  p2Stolen: number;
+  p1Stuns: number;
+  p2Stuns: number;
+  p1EchoesDeployed: number;
+  p2EchoesDeployed: number;
+  winner: 'P1' | 'P2' | 'DRAW';
+  vsBot: boolean;
+}
+
+export interface RivalSimEvent {
+  type:
+    | 'TICK_SECOND'
+    | 'TICK_URGENT'
+    | 'PLATE_ON'
+    | 'PLATE_OFF'
+    | 'GOLD_PICKUP'
+    | 'GOLD_BANK'
+    | 'GOLD_STEAL'
+    | 'GUARD_STUN'
+    | 'LASER_HIT'
+    | 'LOOP_END'
+    | 'CROWN_SPAWN'
+    | 'MATCH_END';
+  team?: RivalTeam;
+  x?: number;
+  y?: number;
+}
+
+export interface RivalGameState {
+  loopNumber: number; // 1..6
+  tick: number; // 0..599
+  vsBot: boolean;
+  p1: RivalPlayerState;
+  p2: RivalPlayerState;
+  p1Recording: RecordedFrame[];
+  p2Recording: RecordedFrame[];
+  p1Echoes: RivalEcho[];
+  p2Echoes: RivalEcho[];
+  nextEchoSeq: number;
+  walls: Wall[];
+  plates: Plate[];
+  gates: Gate[];
+  stashes: { P1: RivalStashDef; P2: RivalStashDef };
+  activePlateIds: Set<string>;
+  gateOpenProgress: Record<string, number>;
+  goldItems: RivalGoldItem[];
+  p1Score: number;
+  p2Score: number;
+  p1Stolen: number;
+  p2Stolen: number;
+  p1Stuns: number;
+  p2Stuns: number;
+  p1EchoesDeployed: number;
+  p2EchoesDeployed: number;
+  shakeTimer: number;
+  shakeIntensity: number;
+  rewindFlashTimer: number;
+  bannerText: string | null;
+  bannerTimer: number;
+  matchEnded: boolean;
+  awaitingDutyAssignment: boolean;
+  particles: Particle[];
+  particleCursor: number;
+}
+

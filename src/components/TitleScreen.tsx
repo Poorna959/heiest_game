@@ -1,15 +1,21 @@
 import React, { useEffect, useRef } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
+import { Bot, Users, Volume2, VolumeX } from 'lucide-react';
 import { renderTitleBlueprint } from '../game/renderer';
 
 interface TitleScreenProps {
   onStartHeist: () => void;
+  onStartRival: (vsBot: boolean) => void;
+  rivalVsBot: boolean;
+  onToggleRivalVsBot: () => void;
   muted: boolean;
   onToggleMute: () => void;
 }
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStartHeist,
+  onStartRival,
+  rivalVsBot,
+  onToggleRivalVsBot,
   muted,
   onToggleMute,
 }) => {
@@ -83,7 +89,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onToggleMute();
           }}
           aria-label={muted ? 'Unmute audio' : 'Mute audio'}
-          className="flex h-10 w-10 items-center justify-center border border-[#334155] bg-[#111520] text-[#CBD5E1] transition-colors hover:border-[#E63946] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E63946]"
+          className="flex h-10 w-10 cursor-pointer items-center justify-center border border-[#334155] bg-[#111520] text-[#CBD5E1] transition-colors hover:border-[#E63946] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E63946]"
         >
           {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
         </button>
@@ -99,20 +105,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           {/* Bespoke inline SVG Title Lockup */}
           <svg
             viewBox="0 0 540 148"
-            className="mb-6 w-full max-w-[490px]"
+            className="mb-5 w-full max-w-[490px]"
             role="img"
             aria-label="PLAN ZERO"
           >
             {/* Crimson heist emblem mark (mask + chronometer ring) */}
             <g transform="translate(8, 18)">
-              <rect
-                x="0"
-                y="0"
-                width="82"
-                height="112"
-                fill="#E63946"
-              />
-              {/* Chronometer ticks */}
+              <rect x="0" y="0" width="82" height="112" fill="#E63946" />
               <circle
                 cx="41"
                 cy="56"
@@ -122,7 +121,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 strokeWidth="3"
                 strokeDasharray="6 4"
               />
-              {/* Stylized heist mask */}
               <ellipse cx="41" cy="56" rx="16" ry="21" fill="#F8FAFC" />
               <rect x="31" y="51" width="7" height="3.5" fill="#0B0D12" />
               <rect x="44" y="51" width="7" height="3.5" fill="#0B0D12" />
@@ -163,7 +161,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </text>
 
             {/* Precision 10.00s reticle accent */}
-            <rect x="382" y="88" width="136" height="36" fill="#141923" stroke="#334155" strokeWidth="1.5" />
+            <rect
+              x="382"
+              y="88"
+              width="136"
+              height="36"
+              fill="#141923"
+              stroke="#334155"
+              strokeWidth="1.5"
+            />
             <text
               x="450"
               y="112"
@@ -178,46 +184,82 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </text>
           </svg>
 
-          <p className="mb-8 max-w-md text-base leading-relaxed text-[#CBD5E1]">
+          <p className="mb-7 max-w-md text-base leading-relaxed text-[#CBD5E1]">
             SWAT is breaching the Royal Mint, and the vault locks were built for
             a full crew. Every ten seconds your watch rewinds—turning your past
             echoes into the team that gets you out with the gold.
           </p>
 
-          <div className="flex items-center gap-5">
-            <button
-              type="button"
-              data-start="true"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onStartHeist();
-              }}
-              className="group inline-flex cursor-pointer items-center gap-3 bg-[#E63946] px-8 py-4 text-base font-bold tracking-[0.14em] text-white transition-transform duration-150 hover:bg-[#DC2626] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#FFD166] whitespace-nowrap shrink-0"
-            >
-              <span>START HEIST</span>
-              <span
-                aria-hidden="true"
-                className="transition-transform duration-150 group-hover:translate-x-1"
+          {/* Primary Story Mode CTA + Rival Heist (2P) + VS AI BOT Toggle */}
+          <div className="flex flex-col gap-3.5">
+            <div className="flex flex-wrap items-center gap-3.5">
+              <button
+                type="button"
+                data-start="true"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onStartHeist();
+                }}
+                className="group inline-flex cursor-pointer items-center gap-3 bg-[#E63946] px-7 py-3.5 text-sm font-bold tracking-[0.14em] text-white transition-transform duration-150 hover:bg-[#DC2626] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#FFD166] whitespace-nowrap shrink-0"
               >
-                →
-              </span>
-            </button>
+                <span>START HEIST</span>
+                <span
+                  aria-hidden="true"
+                  className="transition-transform duration-150 group-hover:translate-x-1"
+                >
+                  →
+                </span>
+              </button>
 
-            <span className="text-xs font-mono-timer tracking-wider text-[#94A3B8]">
-              5 CHAPTERS · PRESS ENTER
-            </span>
+              <button
+                type="button"
+                data-rival-start="true"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onStartRival(rivalVsBot);
+                }}
+                className="inline-flex cursor-pointer items-center gap-2.5 border-2 border-[#38BDF8] bg-[#0D1826] px-6 py-3 text-sm font-bold tracking-[0.12em] text-[#E0F2FE] transition-colors duration-150 hover:bg-[#38BDF8] hover:text-[#07090D] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#38BDF8] whitespace-nowrap shrink-0"
+              >
+                <Users className="h-4 w-4" />
+                <span>RIVAL HEIST (2P)</span>
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={rivalVsBot}
+                data-testid="vs-bot-toggle"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onToggleRivalVsBot();
+                }}
+                className={`inline-flex cursor-pointer items-center gap-2.5 border px-3.5 py-2 font-mono-timer text-xs font-bold tracking-[0.12em] transition-colors whitespace-nowrap shrink-0 ${
+                  rivalVsBot
+                    ? 'border-[#38BDF8] bg-[#38BDF8]/18 text-[#E0F2FE]'
+                    : 'border-[#334155] bg-[#111520] text-[#94A3B8] hover:border-[#64748B] hover:text-[#E2E8F0]'
+                }`}
+              >
+                <Bot className="h-3.5 w-3.5 text-[#38BDF8]" />
+                <span>VS AI BOT: {rivalVsBot ? 'ON (P2 OSLO)' : 'OFF (2P LOCAL)'}</span>
+              </button>
+
+              <span className="text-xs font-mono-timer tracking-wider text-[#94A3B8]">
+                STORY: 5 CHAPTERS · RIVAL: 6 LOOPS
+              </span>
+            </div>
           </div>
         </div>
 
         {/* Flat single-line bottom control legend */}
         <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-[#1E293B] pt-4 text-xs font-mono-timer tracking-wide text-[#94A3B8]">
           <div>
-            WASD / Arrows Move <span aria-hidden="true">·</span> R Rewind Loop{' '}
-            <span aria-hidden="true">·</span> C Clear Echoes{' '}
-            <span aria-hidden="true">·</span> M Audio{' '}
-            <span aria-hidden="true">·</span> Esc Pause
+            Story: WASD / Arrows · R Rewind · C Clear{' '}
+            <span aria-hidden="true">|</span> Rival: P1 WASD (1/2/3) · P2 Arrows
+            (J/K/L) <span aria-hidden="true">·</span> M Audio
           </div>
-          <div className="text-[#64748B]">OPERATIVE: KYOTO</div>
+          <div className="text-[#64748B]">KYOTO vs OSLO</div>
         </footer>
       </main>
     </div>

@@ -10,6 +10,7 @@ import {
 } from '../types';
 import {
   getEchoFrameAtTick,
+  getLevelGoldCases,
   getRemainingSeconds,
   getSweepingLaserSegment,
 } from './engine';
@@ -552,15 +553,19 @@ function drawGate(
     }
 
     // Matching linked-plate badge beside emitter on the open corridor side (never occluded by adjacent walls)
-    const linkedSuffix = gate.linkedPlateIds[0]?.split('-').pop()?.toUpperCase();
+    const linkedSuffix = gate.linkedPlateIds
+      .map((id) => id.split('-').pop()?.toUpperCase() ?? '')
+      .filter(Boolean)
+      .join('+');
     if (linkedSuffix) {
-      const bx = vertical ? gate.x - 16 : gate.x + gate.w * 0.5;
+      const badgeW = linkedSuffix.length > 1 ? 28 : 20;
+      const bx = vertical ? gate.x - (badgeW * 0.5 + 8) : gate.x + gate.w * 0.5;
       const by = vertical ? gate.y + 14 : gate.y - 15;
       ctx.fillStyle = 'rgba(11, 13, 18, 0.92)';
       ctx.strokeStyle = openProgress > 0.4 ? COLOR_SWITCH_ON : COLOR_LASER;
       ctx.lineWidth = 1.25;
       ctx.beginPath();
-      ctx.roundRect(bx - 10, by - 8, 20, 16, 3);
+      ctx.roundRect(bx - badgeW * 0.5, by - 8, badgeW, 16, 3);
       ctx.fill();
       ctx.stroke();
 
@@ -648,7 +653,8 @@ function drawGoldCase(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  timeSec: number
+  timeSec: number,
+  label = 'BULLION'
 ): void {
   const bob = Math.sin(timeSec * 4.5) * 2.5;
   const pulse = 0.5 + 0.5 * Math.sin(timeSec * 5);
@@ -687,7 +693,7 @@ function drawGoldCase(
   ctx.fillStyle = COLOR_GOLD;
   ctx.font = '700 9px "SFMono-Regular", Menlo, Consolas, monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('BULLION', 0, 24 - bob);
+  ctx.fillText(label, 0, 24 - bob);
 
   ctx.restore();
 }
@@ -1095,8 +1101,11 @@ export function renderGame(
     drawPlate(ctx, plate, state.activePlateIds.has(plate.id), timeSec);
   }
 
-  if (state.level.goldCase && !state.goldCollected) {
-    drawGoldCase(ctx, state.level.goldCase.x, state.level.goldCase.y, timeSec);
+  const goldCases = getLevelGoldCases(state.level);
+  for (let i = 0; i < goldCases.length; i++) {
+    if (state.collectedGoldIds?.has(i)) continue;
+    const gc = goldCases[i];
+    drawGoldCase(ctx, gc.x, gc.y, timeSec, gc.label ?? 'BULLION');
   }
 
   for (const gate of state.level.gates) {

@@ -1,4 +1,5 @@
 import { CANVAS_HEIGHT, CANVAS_WIDTH, LevelDef, Wall } from '../types';
+import { createTransmission } from './scriptEngine';
 
 const BORDER_THICKNESS = 20;
 
@@ -40,6 +41,34 @@ export const LEVELS: LevelDef[] = [
       'Breathe, Kyoto. Ten seconds is an eternity if you spend it twice.',
     secondaryRadioLine:
       'Weave past the print bay divider before the chronometer snaps back.',
+    script: {
+      intro: createTransmission(
+        'ARCHITECT',
+        'Breathe, Kyoto. SWAT just sealed the perimeter—ten seconds is an eternity if you spend it twice.'
+      ),
+      firstEcho: createTransmission(
+        'CHRONO_OS',
+        'ECHO #1 ONLINE: Past trajectory mirrored. Weave past the print bay divider to reach the airlock.'
+      ),
+      laserHitPool: [
+        createTransmission(
+          'ARCHITECT',
+          'Static thermal beam, Kyoto. Curve around the concrete pillars—do not rush the corner.'
+        ),
+        createTransmission(
+          'CHRONO_OS',
+          'TEMPORAL SNAP: Fatal laser contact aborted. Loop reset to entry coordinates.'
+        ),
+      ],
+      overPar: createTransmission(
+        'ARCHITECT',
+        'This room is a one-loop sprint, Kyoto. Clear your head and thread the S-curve.'
+      ),
+      urgent: createTransmission(
+        'CHRONO_OS',
+        'CHRONOMETER CRITICAL: Under 2.5 seconds to temporal snapback.'
+      ),
+    },
     spawn: { x: 90, y: 270 },
     exit: { x: 840, y: 230, w: 72, h: 80, label: 'VAULT AIRLOCK' },
     walls: [
@@ -78,6 +107,38 @@ export const LEVELS: LevelDef[] = [
       'The Mint expects a crew. Let ten-seconds-ago-you hold the door.',
     secondaryRadioLine:
       'Stand on Plate A, press R to rewind, then sprint past your echo.',
+    script: {
+      intro: createTransmission(
+        'ARCHITECT',
+        'The Mint engineered a two-person biometric lock. Let ten-seconds-ago-you hold the door.'
+      ),
+      firstEcho: createTransmission(
+        'ARCHITECT',
+        'There goes your ghost. While Echo #1 locks Plate A, sprint straight through the bullion gate.'
+      ),
+      plateActive: createTransmission(
+        'CHRONO_OS',
+        'BIOMETRIC LOCK A ENGAGED: Press [R] now to anchor this echo on the pad and rewind.'
+      ),
+      laserHitPool: [
+        createTransmission(
+          'ARCHITECT',
+          'Gate A stays lethal until an echo is standing on Plate A. Record the plate run first.'
+        ),
+        createTransmission(
+          'CHRONO_OS',
+          'GATE INTERLOCK ACTIVE: Deploy an echo on Plate A before breaching the east corridor.'
+        ),
+      ],
+      overPar: createTransmission(
+        'ARCHITECT',
+        'Two loops is all it takes: Loop 1 holds Plate A, Loop 2 walks through the open gate.'
+      ),
+      urgent: createTransmission(
+        'CHRONO_OS',
+        'CHRONOMETER CRITICAL: Rewind imminent—anchor on Plate A or clear the doorway.'
+      ),
+    },
     spawn: { x: 90, y: 270 },
     exit: { x: 840, y: 230, w: 72, h: 80, label: 'BULLION HALL' },
     walls: [
@@ -90,9 +151,7 @@ export const LEVELS: LevelDef[] = [
       { x: 670, y: 20, w: 30, h: 190, material: 'steel' },
       { x: 670, y: 330, w: 30, h: 190, material: 'steel' },
     ],
-    plates: [
-      { id: 'plate-a', label: 'A', x: 210, y: 90, w: 60, h: 60 },
-    ],
+    plates: [{ id: 'plate-a', label: 'A', x: 210, y: 90, w: 60, h: 60 }],
     gates: [
       {
         id: 'gate-a',
@@ -123,6 +182,38 @@ export const LEVELS: LevelDef[] = [
     radioLine: 'Three of you in the same room. Now we have a real heist.',
     secondaryRadioLine:
       'Echo 1 holds Plate A. Echo 2 claims Plate B. You slip past the sweep.',
+    script: {
+      intro: createTransmission(
+        'ARCHITECT',
+        'Chain the locks: Plate A opens the south cage housing Plate B. Three of you in one room—now we have a crew.'
+      ),
+      firstEcho: createTransmission(
+        'VEGA',
+        'This is Inspector Vega, SWAT Tactical! Thermal sensors show multiple heat signatures inside a sealed sector—surrender now!'
+      ),
+      plateActive: createTransmission(
+        'ARCHITECT',
+        'Ignore Vega. He is chasing ghosts from ten seconds ago. Lock the pad and rewind.'
+      ),
+      laserHitPool: [
+        createTransmission(
+          'VEGA',
+          'Patrol grid tripped in Sector 3! We have them pinned behind the sweeping laser!'
+        ),
+        createTransmission(
+          'ARCHITECT',
+          'Stage just west of the vertical sweep, Kyoto. Cross as the beam recedes.'
+        ),
+      ],
+      overPar: createTransmission(
+        'CHRONO_OS',
+        'PAR EXCEEDED: Echo 1 holds A, Echo 2 enters the south cage for B, Loop 3 slips past the sweep.'
+      ),
+      urgent: createTransmission(
+        'VEGA',
+        'Breach charges set on the outer doors! You are out of time in there!'
+      ),
+    },
     spawn: { x: 80, y: 270 },
     exit: { x: 850, y: 230, w: 72, h: 80, label: 'INNER VAULT' },
     walls: [
@@ -198,10 +289,46 @@ export const LEVELS: LevelDef[] = [
       "You have the gold. Don't celebrate—SWAT just breached the lobby.",
     secondaryRadioLine:
       'Hold Plates A and B with echoes, grab the bullion, and clear the vault.',
+    script: {
+      intro: createTransmission(
+        'ARCHITECT',
+        'Royal Mint bullion reserve. Station echoes on Plates A and B so both vault chambers stand wide open.'
+      ),
+      firstEcho: createTransmission(
+        'ARCHITECT',
+        'Plate A covered. Now send Echo #2 up to Plate B before you make your run for the gold.'
+      ),
+      plateActive: createTransmission(
+        'CHRONO_OS',
+        'CHAMBER SEAL DISENGAGED: Press [R] to lock this echo on the pressure plate.'
+      ),
+      goldPickup: createTransmission(
+        'VEGA',
+        'Seismic sensors just tripped on the bullion pedestal! All units—storm the lower escape shaft!'
+      ),
+      laserHitPool: [
+        createTransmission(
+          'ARCHITECT',
+          'That central laser sweeps every 4.2 seconds. Wait in the upper corridor until it heads west.'
+        ),
+        createTransmission(
+          'VEGA',
+          'You cannot outrun the vault lasers forever! Drop the briefcase!'
+        ),
+      ],
+      overPar: createTransmission(
+        'ARCHITECT',
+        'Do not overcomplicate it: Echo 1 on A, Echo 2 on B, Loop 3 loots the top chamber and exits bottom-right.'
+      ),
+      urgent: createTransmission(
+        'CHRONO_OS',
+        'CHRONOMETER CRITICAL: 2.5s remaining—reach the lower escape shaft now!'
+      ),
+    },
     spawn: { x: 80, y: 270 },
     exit: { x: 842, y: 385, w: 72, h: 80, label: 'ESCAPE SHAFT' },
     requiresGold: true,
-    goldCase: { x: 825, y: 125, radius: 18 },
+    goldCase: { x: 825, y: 125, radius: 18, label: 'BULLION' },
     walls: [
       ...OUTER_WALLS,
       // Bottom-left nook wall beside Plate A (upper open y: 20..350)
@@ -266,10 +393,234 @@ export const LEVELS: LevelDef[] = [
   },
 
   // =========================================================================
-  // CHAPTER 5: THE DECOY — PLAN ZERO (Par: 2 loops)
+  // CHAPTER 5: THE SIGNAL HIJACK — PLAN ECLIPSE (Par: 3 loops · Dual-Plate AND Gate)
   // =========================================================================
   {
     chapter: 5,
+    title: 'The Signal Hijack',
+    planName: 'PLAN ECLIPSE',
+    parLoops: 3,
+    radioLine:
+      'Wait—someone else is on this encrypted frequency. A second chronometer just spiked!',
+    secondaryRadioLine:
+      'Gate AB requires BOTH Plate A and Plate B held simultaneously. Thread the twin sweeps.',
+    script: {
+      intro: createTransmission(
+        'OSLO',
+        'Surprise, Kyoto. Did The Architect forget to mention he built two chronometers? I am cleaning out the East Wing right now.'
+      ),
+      firstEcho: createTransmission(
+        'ARCHITECT',
+        'Oslo stole the prototype watch in Berlin! Focus, Kyoto—that Dual-Lock Gate needs TWO echoes holding Plates A and B at the same time.'
+      ),
+      plateActive: createTransmission(
+        'CHRONO_OS',
+        'DUAL-INTERLOCK CIRCUIT: Both Plate A and Plate B must be active simultaneously to open Gate AB.'
+      ),
+      laserHitPool: [
+        createTransmission(
+          'OSLO',
+          'Ouch! Watch those counter-phase twin lasers, Kyoto—or leave the Royal Mint to the Cobalt Crew.'
+        ),
+        createTransmission(
+          'ARCHITECT',
+          'Pause at the center midpoint (x: 540) between the two vertical sweeps before dashing through Gate AB.'
+        ),
+      ],
+      overPar: createTransmission(
+        'OSLO',
+        'Still stuck on the East Wing interlock? By the time you reach the Royal Vault, the Crown will be mine.'
+      ),
+      urgent: createTransmission(
+        'CHRONO_OS',
+        'TEMPORAL INTERFERENCE: Dual chronometer waves detected—2.5s remaining!'
+      ),
+    },
+    spawn: { x: 85, y: 270 },
+    exit: { x: 845, y: 230, w: 72, h: 80, label: 'EAST WING AIRLOCK' },
+    walls: [
+      ...OUTER_WALLS,
+      // Top-left baffle right of Plate A (leaves 210px center corridor y: 165..375)
+      { x: 300, y: 20, w: 28, h: 145, material: 'steel' },
+      // Bottom-left baffle right of Plate B
+      { x: 300, y: 375, w: 28, h: 145, material: 'steel' },
+      // Right partition flanking Dual-Lock Gate AB (opening y: 210..330 = 120px)
+      { x: 740, y: 20, w: 30, h: 190, material: 'steel' },
+      { x: 740, y: 330, w: 30, h: 190, material: 'steel' },
+    ],
+    plates: [
+      { id: 'plate-a', label: 'A', x: 200, y: 80, w: 60, h: 60 },
+      { id: 'plate-b', label: 'B', x: 200, y: 400, w: 60, h: 60 },
+    ],
+    gates: [
+      {
+        id: 'gate-ab',
+        linkedPlateIds: ['plate-a', 'plate-b'],
+        x: 747,
+        y: 210,
+        w: 16,
+        h: 120,
+        wireWaypoints: [
+          { x: 230, y: 110 },
+          { x: 350, y: 110 },
+          { x: 350, y: 430 },
+          { x: 230, y: 430 },
+          { x: 350, y: 430 },
+          { x: 350, y: 270 },
+          { x: 755, y: 270 },
+        ],
+      },
+    ],
+    sweepingLasers: [
+      // West vertical sweep (x: 380..515)
+      {
+        id: 'ch5-sweep-west',
+        startA: { x: 380, y: 70 },
+        startB: { x: 515, y: 70 },
+        endA: { x: 380, y: 470 },
+        endB: { x: 515, y: 470 },
+        periodSeconds: 4.0,
+        phaseOffset: -Math.PI / 2,
+      },
+      // East vertical sweep in counter-phase (x: 565..705)
+      {
+        id: 'ch5-sweep-east',
+        startA: { x: 565, y: 70 },
+        startB: { x: 705, y: 70 },
+        endA: { x: 565, y: 470 },
+        endB: { x: 705, y: 470 },
+        periodSeconds: 4.0,
+        phaseOffset: Math.PI / 2,
+      },
+    ],
+  },
+
+  // =========================================================================
+  // CHAPTER 6: THE CROSSFIRE VAULT — PLAN PARADOX (Par: 4 loops · Twin Gold Cases)
+  // =========================================================================
+  {
+    chapter: 6,
+    title: 'The Crossfire Vault',
+    planName: 'PLAN PARADOX',
+    parLoops: 4,
+    radioLine:
+      'Oslo tripped the secondary vault locks! You need both North and South bullion cases to unlock the lift.',
+    secondaryRadioLine:
+      'Station 3 echoes on Plates A, B, and C—then sweep both gold vaults in a single 10-second run.',
+    script: {
+      intro: createTransmission(
+        'ARCHITECT',
+        'Oslo cut the primary lift cables! You must secure BOTH the North and South bullion cases in one timeline to counter-weight the lift.'
+      ),
+      firstEcho: createTransmission(
+        'OSLO',
+        'Two vaults, three laser gates, and ten seconds on the clock. Let us see if your echoes can keep up, Kyoto!'
+      ),
+      plateActive: createTransmission(
+        'CHRONO_OS',
+        'RELAY NODE LOCKED: Deploy echoes across Plates A, B, and C so both vaults and the lift exit stand open.'
+      ),
+      goldPickup: createTransmission(
+        'ARCHITECT',
+        'Bullion case secured! Keep sprinting—the lift requires both cases before the ten-second loop snaps back!'
+      ),
+      laserHitPool: [
+        createTransmission(
+          'VEGA',
+          'Crossfire grid engaged in Sector 6! Neither of those thieves walks out of this building!'
+        ),
+        createTransmission(
+          'ARCHITECT',
+          'Unlock all three gates with echoes first so your fourth loop is a clean, unobstructed figure-eight.'
+        ),
+      ],
+      overPar: createTransmission(
+        'CHRONO_OS',
+        'PAR STRATEGY: Loop 1->Plate A, Loop 2->Plate B, Loop 3->Plate C, Loop 4->North Gold + South Gold + Exit.'
+      ),
+      urgent: createTransmission(
+        'OSLO',
+        'Tick-tock, Kyoto! Two seconds left before your hands are empty again!'
+      ),
+    },
+    spawn: { x: 80, y: 270 },
+    exit: { x: 845, y: 230, w: 72, h: 80, label: 'CENTRAL LIFT' },
+    requiresGold: true,
+    goldCases: [
+      { x: 540, y: 95, radius: 18, label: 'NORTH BULLION' },
+      { x: 540, y: 445, radius: 18, label: 'SOUTH BULLION' },
+    ],
+    walls: [
+      ...OUTER_WALLS,
+      // North Gold Vault enclosure (x: 440..640, y: 20..180) with 120px bottom doorway (x: 480..600)
+      { x: 440, y: 20, w: 28, h: 160, material: 'steel' },
+      { x: 612, y: 20, w: 28, h: 160, material: 'steel' },
+      { x: 468, y: 156, w: 12, h: 24, material: 'steel' },
+      { x: 600, y: 156, w: 12, h: 24, material: 'steel' },
+      // South Gold Vault enclosure (x: 440..640, y: 360..520) with 120px top doorway (x: 480..600)
+      { x: 440, y: 360, w: 28, h: 160, material: 'steel' },
+      { x: 612, y: 360, w: 28, h: 160, material: 'steel' },
+      { x: 468, y: 360, w: 12, h: 24, material: 'steel' },
+      { x: 600, y: 360, w: 12, h: 24, material: 'steel' },
+      // Far-right partition flanking Exit Gate C (opening y: 210..330 = 120px)
+      { x: 740, y: 20, w: 30, h: 190, material: 'steel' },
+      { x: 740, y: 330, w: 30, h: 190, material: 'steel' },
+    ],
+    plates: [
+      { id: 'plate-a', label: 'A', x: 150, y: 70, w: 60, h: 60 },
+      { id: 'plate-b', label: 'B', x: 150, y: 410, w: 60, h: 60 },
+      { id: 'plate-c', label: 'C', x: 310, y: 240, w: 60, h: 60 },
+    ],
+    gates: [
+      {
+        id: 'gate-a',
+        linkedPlateIds: ['plate-a'],
+        x: 480,
+        y: 160,
+        w: 120,
+        h: 16,
+        wireWaypoints: [
+          { x: 180, y: 100 },
+          { x: 400, y: 100 },
+          { x: 400, y: 168 },
+          { x: 540, y: 168 },
+        ],
+      },
+      {
+        id: 'gate-b',
+        linkedPlateIds: ['plate-b'],
+        x: 480,
+        y: 364,
+        w: 120,
+        h: 16,
+        wireWaypoints: [
+          { x: 180, y: 440 },
+          { x: 400, y: 440 },
+          { x: 400, y: 372 },
+          { x: 540, y: 372 },
+        ],
+      },
+      {
+        id: 'gate-c',
+        linkedPlateIds: ['plate-c'],
+        x: 747,
+        y: 210,
+        w: 16,
+        h: 120,
+        wireWaypoints: [
+          { x: 340, y: 270 },
+          { x: 755, y: 270 },
+        ],
+      },
+    ],
+    sweepingLasers: [],
+  },
+
+  // =========================================================================
+  // CHAPTER 7: THE DECOY — PLAN ZERO (Par: 2 loops)
+  // =========================================================================
+  {
+    chapter: 7,
     title: 'The Decoy',
     planName: 'PLAN ZERO',
     parLoops: 2,
@@ -277,6 +628,38 @@ export const LEVELS: LevelDef[] = [
       'Plan Zero, Kyoto. Leave a ghost for the police—and walk out rich.',
     secondaryRadioLine:
       'Step inside the glass Decoy Chamber to hold the blast door. Then escape.',
+    script: {
+      intro: createTransmission(
+        'ARCHITECT',
+        'Plan Zero, Kyoto. Vega is breaching this corridor. Step inside the glass Decoy Chamber to leave a ghost for SWAT—then walk out rich.'
+      ),
+      firstEcho: createTransmission(
+        'VEGA',
+        'Breach team in position! Wait—I see the suspect standing inside the glass override chamber! Hold your fire, seal the room!'
+      ),
+      plateActive: createTransmission(
+        'ARCHITECT',
+        'Blast Door unlocked. Rewind now—your echo stays behind in the glass box while the real you slips into the escape tunnel.'
+      ),
+      laserHitPool: [
+        createTransmission(
+          'ARCHITECT',
+          'Do not let the final sweep clip you inches from freedom. Time the beam and sprint through the Blast Door.'
+        ),
+        createTransmission(
+          'OSLO',
+          'Hurry up and ditch Vega, Kyoto! I am waiting for you in the Royal Vault for our six-loop showdown!'
+        ),
+      ],
+      overPar: createTransmission(
+        'CHRONO_OS',
+        'FINAL PROTOCOL: Loop 1 holds Override Plate 0 inside the glass chamber; Loop 2 dashes past the beam into the tunnel.'
+      ),
+      urgent: createTransmission(
+        'VEGA',
+        'Tactical units—breach the glass chamber in two seconds!'
+      ),
+    },
     spawn: { x: 80, y: 270 },
     exit: { x: 845, y: 230, w: 74, h: 80, label: 'ESCAPE TUNNEL' },
     isFinalDecoyChapter: true,
@@ -315,7 +698,7 @@ export const LEVELS: LevelDef[] = [
     sweepingLasers: [
       // Sweeping security beam patrolling east of the Decoy Chamber
       {
-        id: 'ch5-security-sweep',
+        id: 'ch7-security-sweep',
         startA: { x: 590, y: 75 },
         startB: { x: 745, y: 75 },
         endA: { x: 590, y: 465 },

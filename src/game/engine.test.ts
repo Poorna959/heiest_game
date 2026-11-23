@@ -69,9 +69,14 @@ function waitTicks(state: GameState, ticks: number): boolean {
   return true;
 }
 
-test('All 5 chapters have valid wide corridors (>= 60px) and clean spawns', () => {
-  assert.equal(LEVELS.length, 5);
+test('All 7 chapters have valid wide corridors (>= 60px), scripts, and clean spawns', () => {
+  assert.equal(LEVELS.length, 7);
   for (const lvl of LEVELS) {
+    assert.ok(lvl.script, `Chapter ${lvl.chapter} must define a multi-speaker script`);
+    assert.ok(
+      lvl.script.laserHitPool.length >= 2,
+      `Chapter ${lvl.chapter} script must have >= 2 laserHitPool lines`
+    );
     // Verify spawn does not overlap any wall
     for (const w of lvl.walls) {
       const overlapsSpawn =
@@ -204,8 +209,91 @@ test('Chapter 4 (PLAN MIDAS) is solvable in 3 loops collecting Gold Case then ex
   assert.equal(state.loopNumber, 3);
 });
 
-test('Chapter 5 (PLAN ZERO) is solvable in 2 loops and triggers 2-second freeze-frame', () => {
+test('Chapter 5 (PLAN ECLIPSE) requires both Plates A & B held simultaneously (AND gate) and solves in 3 loops', () => {
   const state = createInitialGameState(4);
+  assert.equal(state.level.planName, 'PLAN ECLIPSE');
+
+  // Loop 1: Hold Plate A (230, 110) and rewind
+  assert.equal(steerToward(state, { x: 230, y: 110 }).reached, true);
+  assert.equal(state.activePlateIds.has('plate-a'), true);
+  assert.ok((state.gateOpenProgress['gate-ab'] ?? 0) === 0, 'AND gate must stay closed with only Plate A pressed');
+  triggerManualRewind(state);
+
+  // Loop 2: Hold Plate B (230, 430) while Echo 1 holds Plate A -> AND gate opens
+  assert.equal(steerToward(state, { x: 230, y: 430 }).reached, true);
+  waitTicks(state, 15);
+  assert.equal(state.activePlateIds.has('plate-a'), true);
+  assert.equal(state.activePlateIds.has('plate-b'), true);
+  assert.ok((state.gateOpenProgress['gate-ab'] ?? 0) > 0.5, 'AND gate must open when both Plates A and B are active');
+  triggerManualRewind(state);
+
+  // Loop 3: Wait for both sweeping lasers to clear center lane (y=270) then sprint through open gate-ab to exit
+  assert.equal(steerToward(state, { x: 345, y: 270 }).reached, true);
+  const sweepW = state.level.sweepingLasers[0];
+  const sweepE = state.level.sweepingLasers[1];
+  while (state.tick < 500) {
+    const segW = getSweepingLaserSegment(sweepW, state.tick);
+    const segWNext = getSweepingLaserSegment(sweepW, state.tick + 1);
+    const westSafe =
+      (segW.ay < 185 && segWNext.ay <= segW.ay) ||
+      (segW.ay > 355 && segWNext.ay >= segW.ay);
+    if (westSafe) break;
+    assert.equal(waitTicks(state, 1), true);
+  }
+  assert.equal(steerToward(state, { x: 540, y: 270 }).reached, true);
+  while (state.tick < 520) {
+    const segE = getSweepingLaserSegment(sweepE, state.tick);
+    const segENext = getSweepingLaserSegment(sweepE, state.tick + 1);
+    const eastSafe =
+      (segE.ay < 185 && segENext.ay <= segE.ay) ||
+      (segE.ay > 355 && segENext.ay >= segE.ay);
+    if (eastSafe) break;
+    assert.equal(waitTicks(state, 1), true);
+  }
+  const res = steerToward(state, { x: 880, y: 270 });
+  assert.equal(res.hitLaser, false);
+  assert.equal(state.chapterCompleted, true);
+  assert.equal(state.loopNumber, 3);
+});
+
+test('Chapter 6 (PLAN PARADOX) requires collecting both North and South Gold Cases and solves in 4 loops', () => {
+  const state = createInitialGameState(5);
+  assert.equal(state.level.planName, 'PLAN PARADOX');
+
+  // Loop 1: Hold Plate A (180, 100) to unlock North Gold Vault
+  assert.equal(steerToward(state, { x: 180, y: 100 }).reached, true);
+  assert.equal(state.activePlateIds.has('plate-a'), true);
+  triggerManualRewind(state);
+
+  // Loop 2: Hold Plate B (180, 440) to unlock South Gold Vault
+  assert.equal(steerToward(state, { x: 180, y: 440 }).reached, true);
+  assert.equal(state.activePlateIds.has('plate-b'), true);
+  triggerManualRewind(state);
+
+  // Loop 3: Hold Plate C (340, 270) to unlock far-right Exit Gate C
+  assert.equal(steerToward(state, { x: 340, y: 270 }).reached, true);
+  assert.equal(state.activePlateIds.has('plate-c'), true);
+  triggerManualRewind(state);
+
+  // Loop 4: Enter center aisle (540, 230) -> North Bullion (540, 95) -> South Bullion (540, 445) -> Exit Gate C (880, 270)
+  assert.equal(steerToward(state, { x: 540, y: 230 }).reached, true);
+  assert.equal(steerToward(state, { x: 540, y: 95 }).reached, true);
+  assert.equal(state.collectedGoldIds?.size, 1);
+  assert.equal(state.goldCollected, false, 'Exit must not unlock after only 1 of 2 gold cases');
+
+  assert.equal(steerToward(state, { x: 540, y: 445 }).reached, true);
+  assert.equal(state.collectedGoldIds?.size, 2);
+  assert.equal(state.goldCollected, true, 'Exit unlocks once both gold cases are collected');
+
+  assert.equal(steerToward(state, { x: 540, y: 270 }).reached, true);
+  const res = steerToward(state, { x: 880, y: 270 });
+  assert.equal(res.hitLaser, false);
+  assert.equal(state.chapterCompleted, true);
+  assert.equal(state.loopNumber, 4);
+});
+
+test('Chapter 7 (PLAN ZERO) is solvable in 2 loops and triggers 2-second freeze-frame', () => {
+  const state = createInitialGameState(6);
 
   // Loop 1: Enter glass Decoy Chamber and hold Override Plate (450, 270)
   assert.equal(steerToward(state, { x: 450, y: 270 }).reached, true);
@@ -279,9 +367,10 @@ test('Echo FIFO cap at 5, early rewind anchoring, and rank thresholds', () => {
   assert.deepEqual(anchored, lastFrame);
 
   assert.equal(computeHeistRank(10), 'S');
-  assert.equal(computeHeistRank(11), 'A');
-  assert.equal(computeHeistRank(15), 'A');
-  assert.equal(computeHeistRank(16), 'B');
+  assert.equal(computeHeistRank(18), 'S');
+  assert.equal(computeHeistRank(19), 'A');
+  assert.equal(computeHeistRank(24), 'A');
+  assert.equal(computeHeistRank(25), 'B');
 });
 
 test('Task 1: Speaker profiles and event-driven Story Radio transmissions resolve by priority', () => {

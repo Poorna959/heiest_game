@@ -9,9 +9,12 @@ import {
   getActiveRivalLasers,
   stepRivalSimulation,
 } from './rivalEngine';
+import { RIVAL_ARENAS, RIVAL_ARENA_LIST } from './rivalMaps';
 import {
+  CANVAS_WIDTH,
   InputState,
   LOOP_TICKS,
+  PLAYER_RADIUS,
   PLAYER_SPEED,
   RIVAL_CARRY_SPEED_MULT,
   RIVAL_GUARD_STUN_SECONDS,
@@ -182,4 +185,79 @@ test('AI Bot actively steers toward Plate B on Loop 1 and chooses HACKER duty', 
   }
   assert.equal(state.activePlateIds.has('plate-right'), true, 'AI Bot should reach Plate B on Loop 1');
   assert.equal(chooseBotEchoDuty(state), 'HACKER');
+});
+
+test('Task 3: All 3 Rival PvP Arenas are horizontally symmetric with clean spawns, >=100px gates, and valid gold drops', () => {
+  assert.equal(RIVAL_ARENA_LIST.length, 3);
+  assert.ok(RIVAL_ARENAS.BULLION_HALL);
+  assert.ok(RIVAL_ARENAS.LASER_ROTUNDA);
+  assert.ok(RIVAL_ARENAS.TWIN_VAULTS);
+
+  for (const arena of RIVAL_ARENA_LIST) {
+    // Symmetric spawns across center x = 480
+    assert.equal(
+      arena.p1Spawn.x + arena.p2Spawn.x,
+      CANVAS_WIDTH,
+      `${arena.id}: spawns must mirror across x=480`
+    );
+    assert.equal(
+      arena.p1Spawn.y,
+      arena.p2Spawn.y,
+      `${arena.id}: spawns must share y coordinate`
+    );
+
+    // Neither spawn overlaps any wall
+    for (const spawn of [arena.p1Spawn, arena.p2Spawn]) {
+      for (const w of arena.walls) {
+        const overlaps =
+          spawn.x + PLAYER_RADIUS > w.x &&
+          spawn.x - PLAYER_RADIUS < w.x + w.w &&
+          spawn.y + PLAYER_RADIUS > w.y &&
+          spawn.y - PLAYER_RADIUS < w.y + w.h;
+        assert.equal(overlaps, false, `${arena.id}: spawn overlaps wall`);
+      }
+    }
+
+    // All gates have >= 100px opening
+    assert.ok(arena.gates.length >= 2, `${arena.id}: must have at least 2 gates`);
+    for (const g of arena.gates) {
+      assert.ok(
+        Math.max(g.w, g.h) >= 100,
+        `${arena.id}: gate ${g.id} opening must be >= 100px`
+      );
+    }
+
+    // Symmetric plate placement (sum of center X == 960)
+    assert.equal(arena.plates.length, 2, `${arena.id}: must have 2 plates`);
+    const p1CenterX = arena.plates[0].x + arena.plates[0].w * 0.5;
+    const p2CenterX = arena.plates[1].x + arena.plates[1].w * 0.5;
+    assert.equal(
+      p1CenterX + p2CenterX,
+      CANVAS_WIDTH,
+      `${arena.id}: plates must mirror horizontally`
+    );
+
+    // 6 initial vault gold coords, 2 corridor drop coords, none overlapping walls
+    assert.equal(arena.vaultGoldCoords.length, 6);
+    assert.equal(arena.corridorDropCoords.length, 2);
+    for (const pt of [
+      ...arena.vaultGoldCoords,
+      arena.diamondDropCoord,
+      ...arena.corridorDropCoords,
+      arena.crownSpawnCoord,
+    ]) {
+      for (const w of arena.walls) {
+        const insideWall =
+          pt.x + 10 > w.x &&
+          pt.x - 10 < w.x + w.w &&
+          pt.y + 10 > w.y &&
+          pt.y - 10 < w.y + w.h;
+        assert.equal(
+          insideWall,
+          false,
+          `${arena.id}: gold drop (${pt.x},${pt.y}) overlaps wall`
+        );
+      }
+    }
+  }
 });
